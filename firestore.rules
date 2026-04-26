@@ -1,0 +1,187 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function userRole() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : "student";
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userRole() == "admin";
+    }
+
+    function isTutorOrAdmin() {
+      return isSignedIn() && userRole() in ["tutor", "admin"];
+    }
+
+    function studentNotificationHasPlainNote(r) {
+      return r.keys().hasAny(['noteBody'])
+        && r.noteBody is string
+        && r.noteBody.size() > 0;
+    }
+
+    function studentNotificationHasQuestionBlock(r) {
+      return r.questionText is string
+        && r.questionText.size() > 0
+        && r.options is list
+        && r.options.size() >= 2
+        && r.explanationsText is string
+        && r.explanationsText.size() > 0;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      // Admins may change roles and approval; users may update their profile but not self-approve or change role.
+      allow update: if isAdmin()
+        || (
+          request.auth.uid == userId
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'approvalStatus'])
+        );
+    }
+
+    match /questions/{questionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && (userRole() == "tutor" || userRole() == "admin");
+      allow update, delete: if isSignedIn()
+        && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+
+    /** Distractor / “why others are wrong” copy — tutors may write; only admins may read. */
+    match /questions/{questionId}/adminOnly/{docId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if isSignedIn() && (
+        isAdmin()
+        || (
+          userRole() in ["tutor", "admin"]
+          && exists(/databases/$(database)/documents/questions/$(questionId))
+          && get(/databases/$(database)/documents/questions/$(questionId)).data.createdBy == request.auth.uid
+        )
+      );
+    }
+
+    match /quizTemplates/{quizId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && (userRole() == "tutor" || userRole() == "admin");
+      allow update, delete: if isSignedIn()
+        && (resource.data.createdBy == request.auth.uid || isAdmin());
+    }
+
+    match /quizSessions/{sessionId} {
+      allow read: if isSignedIn() && (
+        resource.data.studentId == request.auth.uid ||
+        resource.data.tutorId == request.auth.uid ||
+        resource.data.tutorId == "" ||
+        userRole() in ["tutor", "admin"]
+      );
+      allow create: if isSignedIn()
+        && request.resource.data.studentId == request.auth.uid;
+      // Students: partial chunk submit (stay in progress) or final submit → submitted.
+      allow update: if isSignedIn() && (
+        userRole() in ["tutor", "admin"]
+        || (
+          resource.data.studentId == request.auth.uid
+          && resource.data.status == "in_progress"
+          && request.resource.data.status == "in_progress"
+          && request.resource.data.studentId == resource.data.studentId
+          && request.resource.data.tutorId == resource.data.tutorId
+        )
+        || (
+          resource.data.studentId == request.auth.uid
+          && resource.data.status == "in_progress"
+          && request.resource.data.status == "submitted"
+          && request.resource.data.studentId == resource.data.studentId
+          && request.resource.data.tutorId == resource.data.tutorId
+          && request.resource.data.resultsReleasedToStudent == false
+        )
+      );
+      allow delete: if isSignedIn() && userRole() in ["tutor", "admin"];
+    }
+
+    match /quizAssignments/{assignmentId} {
+      allow read: if isSignedIn() && (
+        resource.data.studentId == request.auth.uid
+        || userRole() in ["tutor", "admin"]
+      );
+      allow create, update, delete: if isSignedIn() && userRole() in ["tutor", "admin"];
+    }
+
+    match /ratSessions/{ratId} {
+      allow read: if isSignedIn() && (
+        resource.data.studentId == request.auth.uid
+        || isAdmin()
+      );
+      allow create: if isSignedIn()
+        && request.resource.data.studentId == request.auth.uid;
+      // Student-owned sessions: allow in-progress saves and final submit.
+      allow update: if isSignedIn()
+        && resource.data.studentId == request.auth.uid
+        && request.resource.data.studentId == resource.data.studentId;
+      allow delete: if isSignedIn() && isAdmin();
+    }
+
+    match /adminNotifications/{notificationId} {
+      allow read: if isAdmin();
+      // Cloud Functions write these; admins may mark read.
+      allow create, delete: if false;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read", "readAt"]);
+    }
+
+    /** Admin → student teaching notes: plain note and/or question + choices + explanations. */
+    match /studentNotifications/{notificationId} {
+      allow read: if isSignedIn() && (
+        resource.data.studentId == request.auth.uid
+        || isAdmin()
+      );
+
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasAll([
+          "studentId", "createdBy", "read", "title", "questionText", "options", "explanationsText"
+        ])
+        && request.resource.data.studentId is string
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.read == false
+        && request.resource.data.questionText is string
+        && request.resource.data.explanationsText is string
+        && request.resource.data.title is string
+        && request.resource.data.options is list
+        && (
+          studentNotificationHasPlainNote(request.resource.data)
+          || studentNotificationHasQuestionBlock(request.resource.data)
+        );
+
+      allow update: if isAdmin()
+        || (
+          resource.data.studentId == request.auth.uid
+          && request.resource.data.studentId == resource.data.studentId
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["read", "readAt"])
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    /** Admin-uploaded class PPTX presentations (shown to students under Notes → Presentations). */
+    match /classPresentations/{presentationId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.published == true);
+      allow create, update, delete: if isTutorOrAdmin();
+    }
+
+    /** Admin-uploaded study guides (PDF/DOC/DOCX). */
+    match /classStudyGuides/{docId} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.published == true);
+      allow create, update, delete: if isTutorOrAdmin();
+    }
+  }
+}

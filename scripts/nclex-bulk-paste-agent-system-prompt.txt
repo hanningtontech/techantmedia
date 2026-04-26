@@ -1,0 +1,104 @@
+You are generating NCLEX-style practice items for bulk import into a web app. Your entire reply for each batch MUST be plain text only (no markdown fences, no commentary before or after the bank) so it can be pasted into the “Bulk import” box.
+
+================================================================================
+OUTPUT RULES (machine-parsed — violations break import)
+================================================================================
+
+1) FILE HEADER (first non-blank lines)
+   - Start with exactly one line:  Category: <short category name>
+   - Optionally next:            Topic: <optional topic>
+   - You may skip Topic; category alone is OK.
+
+2) SEPARATE EACH QUESTION using ONE of these patterns (required):
+   EITHER
+   A) A line containing ONLY underscores, at least 8 characters, e.g.
+      ________________________________________
+   OR
+   B) Start each question with its own line: Question 1   then Question 2   etc.
+      (regex: ^Question\s+\d+\s*$ on its own line)
+   Do NOT rely on dashed lines (----) alone to separate questions — they are ignored.
+
+3) QUESTION BLOCK ORDER (inside each question, top to bottom)
+   a) Optional first line: Question N
+   b) Stem: one or more lines of scenario + question (no letter labels here).
+   c) Exactly four options on separate lines, labels A–D only, using ONE of these patterns
+      at the START of each line (no bullets, no dashes, no leading spaces before the letter):
+        A. <text>     or     A) <text>     or     A: <text>
+      Same for B, C, D. Options must be contiguous (no blank lines inside the A–D block).
+   d) Blank line optional, then EXACTLY this line (letter only, nothing else on the line):
+        Correct Answer: X
+      where X is A, B, C, or D (single-select only for this format).
+   e) Then a line starting with:
+        Rationale:
+      followed by one or more lines of rationale (why the correct option is right).
+   f) OPTIONAL but recommended for this project — admin-only distractor teaching:
+        Why the others are not correct:
+      then several lines explaining wrong options (plain prose; lines may start with
+      “A.”, “B.”, etc. here — that is fine in this section because it is not re-parsed
+      as answer choices).
+
+4) FORBIDDEN IN OPTIONS
+   - No Unicode bullets (•), no markdown list markers (-, *), no “A - text”.
+   - No “Correct answer is D” — must be the exact Correct Answer: D line.
+
+5) SATA (select all that apply)
+   - This bulk format supports single keyed letter only. If the item is SATA, output
+     a single “best keyed” letter the app will use as primary, or generate single-answer
+     items only.
+
+6) QUALITY
+   - Clinically accurate, exam-style stems, four plausible distractors, concise rationale.
+   - “Why the others are not correct” should map to the three incorrect options clearly.
+
+================================================================================
+COPY-PASTE TEMPLATE (replace braces; keep labels exact)
+================================================================================
+
+Category: {CATEGORY_NAME}
+Topic: {OPTIONAL_TOPIC}
+
+________________________________________
+Question 1
+{STEM — multiple lines OK}
+
+A. {option A}
+B. {option B}
+C. {option C}
+D. {option D}
+
+Correct Answer: {A|B|C|D}
+
+Rationale:
+{why correct is correct — multiple lines OK}
+
+Why the others are not correct:
+A. {why A is wrong}
+B. {why B is wrong}
+C. {why C is wrong}
+
+________________________________________
+Question 2
+{next stem…}
+
+A. …
+B. …
+C. …
+D. …
+
+Correct Answer: …
+
+Rationale:
+…
+
+Why the others are not correct:
+…
+
+================================================================================
+SELF-CHECK BEFORE YOU SEND
+================================================================================
+[ ] Starts with Category:
+[ ] Every question split by ______ (8+ underscores) OR each starts with Question N
+[ ] Four options: lines begin with A. / B. / C. / D. (or ) or :) — no bullets
+[ ] Correct Answer: line is alone with a single letter
+[ ] Rationale: present and non-empty
+[ ] If using distractor teaching, header is exactly: Why the others are not correct:

@@ -1,0 +1,1358 @@
+{
+  "exportVersion": 1,
+  "description": "Corrected 50-item bank: Physiological Integrity / Cardiovascular + Priority & Clinical Judgment. Duplicates removed; Q9 rationale corrected. Compatible with Firestore question shape.",
+  "category": "Physiological Integrity",
+  "topic": "Cardiovascular + Priority & Clinical Judgment",
+  "questions": [
+    {
+      "title": "",
+      "questionText": "A 64-year-old patient with a history of hypertension reports sudden chest tightness and shortness of breath. Vital signs: BP 88/58, HR 122, RR 26, SpO₂ 90%.\nWhat is the nurse's priority action?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Administer IV beta-blocker"
+        },
+        {
+          "id": "b",
+          "text": "Place the patient in high Fowler's position and apply oxygen"
+        },
+        {
+          "id": "c",
+          "text": "Obtain a 12-lead ECG"
+        },
+        {
+          "id": "d",
+          "text": "Start IV fluids rapidly"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "This patient is unstable (hypotension + hypoxia). Priority follows ABCs (Airway, Breathing, Circulation). Oxygenation comes first. Positioning improves lung expansion. ECG is important but not before stabilizing airway/breathing.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with heart failure is receiving furosemide. Which finding requires immediate follow-up?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Potassium level 3.1 mEq/L"
+        },
+        {
+          "id": "b",
+          "text": "Urine output 1200 mL/day"
+        },
+        {
+          "id": "c",
+          "text": "Blood pressure 130/78 mmHg"
+        },
+        {
+          "id": "d",
+          "text": "Mild ankle edema"
+        }
+      ],
+      "correctAnswerId": "a",
+      "rationale": "Furosemide causes potassium loss. A level of 3.1 = hypokalemia, which can trigger fatal arrhythmias. This is priority over stable vitals or mild edema.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient presents with chest pain radiating to the left arm. Which assessment finding is most concerning?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Pain rated 7/10"
+        },
+        {
+          "id": "b",
+          "text": "Nausea and vomiting"
+        },
+        {
+          "id": "c",
+          "text": "Cool, clammy skin"
+        },
+        {
+          "id": "d",
+          "text": "Anxiety"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Cool, clammy skin = poor perfusion + sympathetic response, often seen in shock or acute MI. This indicates worsening condition and requires urgent attention.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with atrial fibrillation is at highest risk for which complication?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Myocardial hypertrophy"
+        },
+        {
+          "id": "b",
+          "text": "Pulmonary embolism"
+        },
+        {
+          "id": "c",
+          "text": "Stroke"
+        },
+        {
+          "id": "d",
+          "text": "Heart block"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Atrial fibrillation causes blood pooling in atria → clot formation → embolization → stroke. This is the most common and dangerous complication.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A nurse is caring for a patient post-cardiac catheterization. Which finding requires immediate intervention?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Small amount of bleeding at insertion site"
+        },
+        {
+          "id": "b",
+          "text": "BP 118/76 mmHg"
+        },
+        {
+          "id": "c",
+          "text": "Absent distal pulses in the affected limb"
+        },
+        {
+          "id": "d",
+          "text": "Patient reports mild discomfort"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Absent pulses = possible arterial occlusion → risk of limb ischemia. This is an emergency. Mild bleeding and discomfort are expected.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with suspected myocardial infarction is prescribed morphine. What is the primary purpose of this medication?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Reduce heart rate"
+        },
+        {
+          "id": "b",
+          "text": "Decrease preload and relieve pain"
+        },
+        {
+          "id": "c",
+          "text": "Prevent clot formation"
+        },
+        {
+          "id": "d",
+          "text": "Increase oxygen saturation"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Morphine relieves pain and reduces preload (vasodilation), decreasing cardiac workload. It does not prevent clots (that is anticoagulants/antiplatelets).",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with hypertension suddenly develops a severe headache and blurred vision. What should the nurse suspect first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Stroke"
+        },
+        {
+          "id": "b",
+          "text": "Hypertensive crisis"
+        },
+        {
+          "id": "c",
+          "text": "Migraine"
+        },
+        {
+          "id": "d",
+          "text": "Anxiety attack"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Severe headache + visual changes + hypertension = hypertensive crisis. This can quickly lead to stroke if untreated, so it is the most immediate concern.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which patient should the nurse assess first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Patient with BP 150/90 complaining of headache"
+        },
+        {
+          "id": "b",
+          "text": "Patient with chest pain relieved by rest"
+        },
+        {
+          "id": "c",
+          "text": "Patient with HR 110 after walking"
+        },
+        {
+          "id": "d",
+          "text": "Patient with sudden onset chest pain and diaphoresis"
+        }
+      ],
+      "correctAnswerId": "d",
+      "rationale": "Sudden chest pain + diaphoresis = possible acute MI → life-threatening. Always prioritize unstable, acute, life-threatening conditions.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with heart failure is on fluid restriction. Which statement indicates understanding?",
+      "options": [
+        {
+          "id": "a",
+          "text": "I can drink as much as I want if I feel thirsty."
+        },
+        {
+          "id": "b",
+          "text": "I will track all fluids including soups and fruits."
+        },
+        {
+          "id": "c",
+          "text": "Only water counts toward fluid intake."
+        },
+        {
+          "id": "d",
+          "text": "Fluid restriction is not important if I take my meds."
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "All fluids count toward the restriction—including water, soups, gelatin, ice, and high-water-content fruits (e.g., watermelon). Option B shows correct understanding.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient is receiving nitroglycerin for chest pain. Which finding indicates the medication is effective?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Decreased blood pressure"
+        },
+        {
+          "id": "b",
+          "text": "Relief of chest pain"
+        },
+        {
+          "id": "c",
+          "text": "Increased heart rate"
+        },
+        {
+          "id": "d",
+          "text": "Flushing of the skin"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "The goal of nitroglycerin is to relieve chest pain (angina). Side effects like hypotension or flushing do not indicate therapeutic effectiveness.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with heart failure reports sudden weight gain of 2 kg (4.4 lbs) in 2 days. What is the nurse's best action?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Reassure the patient this is normal"
+        },
+        {
+          "id": "b",
+          "text": "Restrict sodium intake only"
+        },
+        {
+          "id": "c",
+          "text": "Notify the provider"
+        },
+        {
+          "id": "d",
+          "text": "Encourage increased activity"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Rapid weight gain indicates fluid retention → worsening heart failure → requires provider intervention.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with chest pain is given oxygen. What finding indicates improvement?",
+      "options": [
+        {
+          "id": "a",
+          "text": "HR decreases from 110 to 105"
+        },
+        {
+          "id": "b",
+          "text": "SpO₂ increases from 90% to 96%"
+        },
+        {
+          "id": "c",
+          "text": "BP decreases slightly"
+        },
+        {
+          "id": "d",
+          "text": "Patient appears calmer"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Oxygen therapy effectiveness is measured by improved oxygen saturation.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient is taking digoxin. Which finding suggests toxicity?",
+      "options": [
+        {
+          "id": "a",
+          "text": "HR 88 bpm"
+        },
+        {
+          "id": "b",
+          "text": "Nausea and blurred vision"
+        },
+        {
+          "id": "c",
+          "text": "BP 130/80"
+        },
+        {
+          "id": "d",
+          "text": "Mild fatigue"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Classic digoxin toxicity signs: GI symptoms + visual disturbances (yellow/blurred vision).",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which electrolyte imbalance increases the risk of digoxin toxicity?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Hyperkalemia"
+        },
+        {
+          "id": "b",
+          "text": "Hypokalemia"
+        },
+        {
+          "id": "c",
+          "text": "Hypernatremia"
+        },
+        {
+          "id": "d",
+          "text": "Hypercalcemia"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Low potassium enhances digoxin effects, increasing toxicity risk.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with MI is ordered aspirin. What is the primary purpose?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Reduce pain"
+        },
+        {
+          "id": "b",
+          "text": "Lower blood pressure"
+        },
+        {
+          "id": "c",
+          "text": "Prevent platelet aggregation"
+        },
+        {
+          "id": "d",
+          "text": "Increase oxygen delivery"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Aspirin prevents clot expansion by inhibiting platelets.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient suddenly develops shortness of breath after being on bed rest for days. What is the priority suspicion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Heart failure"
+        },
+        {
+          "id": "b",
+          "text": "Pneumonia"
+        },
+        {
+          "id": "c",
+          "text": "Pulmonary embolism"
+        },
+        {
+          "id": "d",
+          "text": "Anxiety"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Sudden dyspnea + immobility = PE until proven otherwise.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which finding in a patient with heart failure requires immediate intervention?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Mild edema"
+        },
+        {
+          "id": "b",
+          "text": "Crackles in lungs"
+        },
+        {
+          "id": "c",
+          "text": "Weight gain of 0.5 kg"
+        },
+        {
+          "id": "d",
+          "text": "BP 128/82"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Crackles = fluid in lungs → impaired gas exchange → priority (breathing).",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient is on heparin therapy. Which lab value is most important?",
+      "options": [
+        {
+          "id": "a",
+          "text": "INR"
+        },
+        {
+          "id": "b",
+          "text": "Platelet count"
+        },
+        {
+          "id": "c",
+          "text": "aPTT"
+        },
+        {
+          "id": "d",
+          "text": "Hemoglobin"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Heparin is monitored using aPTT.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient receiving warfarin should be monitored using which test?",
+      "options": [
+        {
+          "id": "a",
+          "text": "aPTT"
+        },
+        {
+          "id": "b",
+          "text": "INR"
+        },
+        {
+          "id": "c",
+          "text": "Platelet count"
+        },
+        {
+          "id": "d",
+          "text": "Sodium levels"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Warfarin effectiveness is monitored using INR.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient complains of chest pain. Which question is most important initially?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Have you eaten today?"
+        },
+        {
+          "id": "b",
+          "text": "Where is the pain located?"
+        },
+        {
+          "id": "c",
+          "text": "Do you exercise regularly?"
+        },
+        {
+          "id": "d",
+          "text": "What medications do you take?"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Pain assessment (location, quality) is the first step in evaluation.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient has BP 180/110 with no symptoms. What is the priority?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Immediate IV medication"
+        },
+        {
+          "id": "b",
+          "text": "Monitor and reassess"
+        },
+        {
+          "id": "c",
+          "text": "Call emergency response"
+        },
+        {
+          "id": "d",
+          "text": "Give oxygen"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "No symptoms = hypertensive urgency, not emergency → monitor first.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with MI develops ventricular fibrillation. What is the priority action?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Administer oxygen"
+        },
+        {
+          "id": "b",
+          "text": "Start IV fluids"
+        },
+        {
+          "id": "c",
+          "text": "Defibrillate"
+        },
+        {
+          "id": "d",
+          "text": "Give pain medication"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "VF = cardiac arrest rhythm → immediate defibrillation.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient has peripheral edema. Which assessment is most relevant?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Lung sounds"
+        },
+        {
+          "id": "b",
+          "text": "Skin temperature"
+        },
+        {
+          "id": "c",
+          "text": "Bowel sounds"
+        },
+        {
+          "id": "d",
+          "text": "Vision"
+        }
+      ],
+      "correctAnswerId": "a",
+      "rationale": "Edema may indicate fluid overload → check lungs for congestion.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with angina is prescribed nitroglycerin. What instruction is correct?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Swallow the tablet whole"
+        },
+        {
+          "id": "b",
+          "text": "Take only after meals"
+        },
+        {
+          "id": "c",
+          "text": "Place under tongue"
+        },
+        {
+          "id": "d",
+          "text": "Take with water"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Nitroglycerin is sublingual for rapid absorption.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which symptom is most indicative of left-sided heart failure?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Peripheral edema"
+        },
+        {
+          "id": "b",
+          "text": "Jugular vein distention"
+        },
+        {
+          "id": "c",
+          "text": "Pulmonary crackles"
+        },
+        {
+          "id": "d",
+          "text": "Ascites"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Left HF → lung congestion → crackles.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with DVT is at risk for which complication?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Stroke"
+        },
+        {
+          "id": "b",
+          "text": "Pulmonary embolism"
+        },
+        {
+          "id": "c",
+          "text": "Myocardial infarction"
+        },
+        {
+          "id": "d",
+          "text": "Heart failure"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Clot can travel → lungs → PE.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient has HR 48 bpm and dizziness. What is the priority?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Monitor"
+        },
+        {
+          "id": "b",
+          "text": "Administer atropine"
+        },
+        {
+          "id": "c",
+          "text": "Encourage fluids"
+        },
+        {
+          "id": "d",
+          "text": "Reassure patient"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Symptomatic bradycardia → atropine is first-line per ACLS-style management.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which finding suggests cardiogenic shock?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Warm skin"
+        },
+        {
+          "id": "b",
+          "text": "High urine output"
+        },
+        {
+          "id": "c",
+          "text": "Low BP and weak pulses"
+        },
+        {
+          "id": "d",
+          "text": "Increased appetite"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Cardiogenic shock = poor perfusion → hypotension + weak pulses.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient is on beta-blockers. What should the nurse monitor?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Blood glucose"
+        },
+        {
+          "id": "b",
+          "text": "Heart rate"
+        },
+        {
+          "id": "c",
+          "text": "Oxygen saturation"
+        },
+        {
+          "id": "d",
+          "text": "Urine output"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Beta-blockers reduce heart rate; risk of bradycardia.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which patient teaching is most important after MI?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Increase physical activity immediately"
+        },
+        {
+          "id": "b",
+          "text": "Stop medications when feeling better"
+        },
+        {
+          "id": "c",
+          "text": "Adhere to medication and lifestyle changes"
+        },
+        {
+          "id": "d",
+          "text": "Avoid all physical movement"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Long-term survival depends on medication adherence + lifestyle modification.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with acute MI is receiving oxygen, aspirin, and nitroglycerin. BP drops from 130/80 to 88/54 after nitroglycerin. What is the priority action?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Continue nitroglycerin"
+        },
+        {
+          "id": "b",
+          "text": "Place patient in Trendelenburg"
+        },
+        {
+          "id": "c",
+          "text": "Stop nitroglycerin and notify provider"
+        },
+        {
+          "id": "d",
+          "text": "Administer morphine"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Nitroglycerin causes vasodilation → hypotension. Significant BP drop = stop drug and notify provider.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with heart failure has crackles, JVD, and BP 92/60. Which action is most appropriate?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Administer IV fluids"
+        },
+        {
+          "id": "b",
+          "text": "Give diuretics as prescribed"
+        },
+        {
+          "id": "c",
+          "text": "Encourage oral fluids"
+        },
+        {
+          "id": "d",
+          "text": "Place in supine position"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Signs of fluid overload despite low BP → diuretics relieve congestion; fluids would worsen overload.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which patient requires immediate intervention?",
+      "options": [
+        {
+          "id": "a",
+          "text": "HR 52 bpm, asymptomatic"
+        },
+        {
+          "id": "b",
+          "text": "BP 140/90 with headache"
+        },
+        {
+          "id": "c",
+          "text": "Chest pain + ST elevation + diaphoresis"
+        },
+        {
+          "id": "d",
+          "text": "Mild ankle swelling"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "STEMI signs = life-threatening emergency → immediate action.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient on warfarin has INR of 5.2. What is the priority?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Continue medication"
+        },
+        {
+          "id": "b",
+          "text": "Administer vitamin K"
+        },
+        {
+          "id": "c",
+          "text": "Increase dose"
+        },
+        {
+          "id": "d",
+          "text": "Encourage exercise"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "High INR = bleeding risk → antidote (vitamin K) per orders.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with DVT suddenly develops chest pain and dyspnea. What is the first action?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Start anticoagulant"
+        },
+        {
+          "id": "b",
+          "text": "Assess oxygen saturation"
+        },
+        {
+          "id": "c",
+          "text": "Call provider"
+        },
+        {
+          "id": "d",
+          "text": "Position supine"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Assess airway/breathing first (oxygenation) before other interventions.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with digoxin therapy has HR 54 bpm. What should the nurse do?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Administer medication"
+        },
+        {
+          "id": "b",
+          "text": "Hold medication and notify provider"
+        },
+        {
+          "id": "c",
+          "text": "Double the dose"
+        },
+        {
+          "id": "d",
+          "text": "Monitor later"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Digoxin is often held if HR < 60 bpm (per agency policy) due to bradycardia risk.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient post-MI reports increasing chest pain unrelieved by nitroglycerin. What is the priority interpretation?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Medication failure"
+        },
+        {
+          "id": "b",
+          "text": "Anxiety"
+        },
+        {
+          "id": "c",
+          "text": "Reinfarction"
+        },
+        {
+          "id": "d",
+          "text": "Muscle strain"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Persistent pain after treatment = possible reinfarction → emergency evaluation.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with heart failure has decreased urine output and rising creatinine. What does this indicate?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Improvement"
+        },
+        {
+          "id": "b",
+          "text": "Renal hypoperfusion"
+        },
+        {
+          "id": "c",
+          "text": "Dehydration"
+        },
+        {
+          "id": "d",
+          "text": "Infection"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "HF reduces cardiac output → kidney perfusion drops → renal impairment.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which intervention is highest priority for a patient with ventricular tachycardia and pulse?",
+      "options": [
+        {
+          "id": "a",
+          "text": "CPR"
+        },
+        {
+          "id": "b",
+          "text": "Defibrillation"
+        },
+        {
+          "id": "c",
+          "text": "Antiarrhythmic medication"
+        },
+        {
+          "id": "d",
+          "text": "Oxygen only"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "VT with a pulse is treated with antiarrhythmics (e.g., amiodarone); CPR/defibrillation apply to pulseless arrest rhythms.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient receiving heparin develops platelet count drop. What should the nurse suspect?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Anemia"
+        },
+        {
+          "id": "b",
+          "text": "HIT (Heparin-Induced Thrombocytopenia)"
+        },
+        {
+          "id": "c",
+          "text": "Infection"
+        },
+        {
+          "id": "d",
+          "text": "Dehydration"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Heparin can cause HIT → paradoxical clotting risk; notify provider.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which patient should be seen first?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Stable angina relieved by rest"
+        },
+        {
+          "id": "b",
+          "text": "BP 160/100 no symptoms"
+        },
+        {
+          "id": "c",
+          "text": "Sudden chest pain + hypotension"
+        },
+        {
+          "id": "d",
+          "text": "Mild fatigue"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Hypotension + chest pain = unstable → priority.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with cardiogenic shock shows which finding?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Warm, flushed skin"
+        },
+        {
+          "id": "b",
+          "text": "High BP"
+        },
+        {
+          "id": "c",
+          "text": "Cold, clammy skin"
+        },
+        {
+          "id": "d",
+          "text": "Increased urine output"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Poor perfusion → cool, clammy skin.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with pericardial tamponade would show:",
+      "options": [
+        {
+          "id": "a",
+          "text": "High BP"
+        },
+        {
+          "id": "b",
+          "text": "Narrow pulse pressure"
+        },
+        {
+          "id": "c",
+          "text": "Increased urine output"
+        },
+        {
+          "id": "d",
+          "text": "Warm skin"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Tamponade restricts filling → narrow pulse pressure (and Beck triad findings).",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with MI develops sudden confusion. What is the priority concern?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Anxiety"
+        },
+        {
+          "id": "b",
+          "text": "Hypoxia"
+        },
+        {
+          "id": "c",
+          "text": "Fatigue"
+        },
+        {
+          "id": "d",
+          "text": "Medication side effect"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Confusion may indicate hypoxia or reduced perfusion → assess oxygenation urgently.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which lab value is most critical in MI?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Hemoglobin"
+        },
+        {
+          "id": "b",
+          "text": "Troponin"
+        },
+        {
+          "id": "c",
+          "text": "Sodium"
+        },
+        {
+          "id": "d",
+          "text": "Calcium"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Troponin is a specific marker for cardiac injury.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient with heart failure is taking ACE inhibitors. What side effect requires attention?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Dry cough"
+        },
+        {
+          "id": "b",
+          "text": "Increased appetite"
+        },
+        {
+          "id": "c",
+          "text": "Weight gain"
+        },
+        {
+          "id": "d",
+          "text": "Sweating"
+        }
+      ],
+      "correctAnswerId": "a",
+      "rationale": "ACE inhibitors commonly cause a persistent dry cough; report to provider.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient develops sudden sharp chest pain that worsens with breathing. Likely cause?",
+      "options": [
+        {
+          "id": "a",
+          "text": "MI"
+        },
+        {
+          "id": "b",
+          "text": "Pulmonary embolism"
+        },
+        {
+          "id": "c",
+          "text": "Heart failure"
+        },
+        {
+          "id": "d",
+          "text": "Angina"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Pleuritic chest pain worsening with inspiration suggests PE among differentials.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "Which patient requires immediate intervention?",
+      "options": [
+        {
+          "id": "a",
+          "text": "BP 150/90"
+        },
+        {
+          "id": "b",
+          "text": "HR 58 asymptomatic"
+        },
+        {
+          "id": "c",
+          "text": "Chest pain + oxygen saturation 85%"
+        },
+        {
+          "id": "d",
+          "text": "Mild fatigue"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "Low SpO₂ with chest pain = oxygenation emergency.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A patient on beta-blockers reports dizziness. What is the likely cause?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Hypertension"
+        },
+        {
+          "id": "b",
+          "text": "Bradycardia"
+        },
+        {
+          "id": "c",
+          "text": "Infection"
+        },
+        {
+          "id": "d",
+          "text": "Dehydration"
+        }
+      ],
+      "correctAnswerId": "b",
+      "rationale": "Beta-blockers decrease HR; dizziness may reflect bradycardia or low output.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    },
+    {
+      "title": "",
+      "questionText": "A nurse is caring for four patients. Which task can be delegated to a UAP?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Assess chest pain"
+        },
+        {
+          "id": "b",
+          "text": "Monitor ECG changes"
+        },
+        {
+          "id": "c",
+          "text": "Measure vital signs"
+        },
+        {
+          "id": "d",
+          "text": "Evaluate medication response"
+        }
+      ],
+      "correctAnswerId": "c",
+      "rationale": "UAP may perform stable routine tasks such as vitals; assessments and ECG interpretation stay with the nurse.",
+      "category": "Physiological Integrity",
+      "topic": "Cardiovascular + Priority & Clinical Judgment",
+      "isActive": true
+    }
+  ]
+}

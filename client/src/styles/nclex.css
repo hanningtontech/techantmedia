@@ -1,0 +1,138 @@
+/* NCLEX clinical UI — scoped with .nclex-app */
+.nclex-app {
+  --nclex-primary: #0066cc;
+  --nclex-primary-hover: #0052a3;
+  --nclex-success: #10b981;
+  --nclex-error: #ef4444;
+  --nclex-warning: #f59e0b;
+  --nclex-neutral: #6b7280;
+  --nclex-bg: #f0f7ff;
+  --nclex-card: #ffffff;
+  --nclex-border: rgba(15, 80, 160, 0.12);
+  --nclex-shadow: 0 4px 20px rgba(15, 80, 160, 0.08);
+  --nclex-radius: 8px;
+  --nclex-radius-card: 14px;
+  --nclex-radius-input: 6px;
+  --nclex-transition: 200ms ease-in-out;
+  --nclex-gradient-page: linear-gradient(165deg, #e8f2ff 0%, #f5f9ff 38%, #eef6ff 100%);
+  --nclex-gradient-card: linear-gradient(145deg, #ffffff 0%, #f3f8ff 55%, #e8f2ff 100%);
+  --nclex-gradient-header: linear-gradient(90deg, #ffffff 0%, #f0f7ff 45%, #e3efff 100%);
+
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  font-size: clamp(0.9375rem, 0.9rem + 0.2vw, 1.0625rem);
+  line-height: 1.55;
+  background: var(--nclex-gradient-page);
+  background-color: var(--nclex-bg);
+  color: #0f172a;
+  min-height: 100vh;
+}
+
+/* Full-bleed gradient shell for student flows */
+.nclex-shell {
+  background: var(--nclex-gradient-page);
+  background-attachment: fixed;
+}
+
+/* Readable content width: comfortable on phone, uses more space on desktop */
+.nclex-main {
+  width: 100%;
+  max-width: min(112rem, 100vw - 1rem);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: clamp(0.75rem, 2vw, 1.75rem);
+  padding-right: clamp(0.75rem, 2vw, 1.75rem);
+  padding-top: clamp(1rem, 2.5vw, 2.5rem);
+  padding-bottom: clamp(1.5rem, 3vw, 3rem);
+}
+
+.nclex-main-narrow {
+  max-width: min(48rem, 100% - 1rem);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: clamp(0.75rem, 2vw, 1.5rem);
+  padding-right: clamp(0.75rem, 2vw, 1.5rem);
+  padding-top: clamp(1rem, 2vw, 1.75rem);
+  padding-bottom: clamp(1.25rem, 2.5vw, 2.5rem);
+}
+
+.nclex-app h1 {
+  font-size: clamp(1.5rem, 2vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.nclex-app h2 {
+  font-size: clamp(1.125rem, 1.5vw, 1.5rem);
+  font-weight: 700;
+}
+.nclex-app h3 {
+  font-size: clamp(1rem, 1.2vw, 1.25rem);
+  font-weight: 600;
+}
+
+.nclex-app .nclex-mono {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.75rem;
+}
+
+.nclex-card {
+  background: var(--nclex-gradient-card);
+  background-color: var(--nclex-card);
+  border-radius: var(--nclex-radius-card);
+  box-shadow: var(--nclex-shadow);
+  border: 1px solid var(--nclex-border);
+  transition: box-shadow var(--nclex-transition), transform var(--nclex-transition), border-color var(--nclex-transition);
+}
+
+.nclex-card-interactive:hover {
+  box-shadow: 0 8px 28px rgba(15, 80, 160, 0.14);
+  transform: translateY(-2px);
+  border-color: rgba(0, 102, 204, 0.22);
+}
+
+@media (max-width: 640px) {
+  .nclex-card-interactive:hover {
+    transform: none;
+  }
+}
+
+.nclex-btn-primary {
+  background-color: var(--nclex-primary);
+  color: #fff;
+  border-radius: var(--nclex-radius);
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  transition: background-color var(--nclex-transition), transform var(--nclex-transition);
+}
+.nclex-btn-primary:hover {
+  background-color: var(--nclex-primary-hover);
+}
+.nclex-btn-primary:focus-visible {
+  outline: 2px solid var(--nclex-primary);
+  outline-offset: 2px;
+}
+
+.nclex-text-success {
+  color: var(--nclex-success);
+}
+.nclex-text-error {
+  color: var(--nclex-error);
+}
+.nclex-text-warning {
+  color: var(--nclex-warning);
+}
+.nclex-text-muted {
+  color: var(--nclex-neutral);
+}
+
+.nclex-header-bar {
+  background: var(--nclex-gradient-header);
+  background-color: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--nclex-border);
+  box-shadow: 0 2px 16px rgba(15, 80, 160, 0.06);
+}
+
+.nclex-progress-fill {
+  background: linear-gradient(90deg, var(--nclex-primary), #3b82f6);
+  transition: width var(--nclex-transition);
+}
