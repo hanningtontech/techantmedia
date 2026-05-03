@@ -2,6 +2,9 @@ import type { Timestamp } from "firebase/firestore";
 
 export type UserRole = "tutor" | "student" | "admin";
 
+/** Which NCLEX track this content targets. `both` = RN and PN. Omit/null = legacy (visible to all tracks). */
+export type NclexExamType = "rn" | "pn" | "both";
+
 export type QuizSessionStatus = "in_progress" | "submitted" | "reviewed";
 
 export type ExplanationTag = "acceptable" | "not acceptable" | null;
@@ -16,6 +19,8 @@ export interface Question {
   id: string;
   title: string;
   questionText: string;
+  /** Optional figure above the choices (HTTPS). When loading, legacy `imageUrl` on the doc maps here. */
+  stemImageUrl?: string;
   /** Optional sub-label (e.g. NCLEX topic) for tutor views and search. */
   topic?: string;
   options: QuestionOption[];
@@ -27,6 +32,14 @@ export interface Question {
   rationale: string;
   keywordsList: string[];
   category: string;
+  /** RN / PN / both; omit or null = legacy (any track). */
+  examType?: NclexExamType | null;
+  /** Optional structured catalog labels (see `nclexCatalogHierarchy`). */
+  nclexCategory?: string;
+  nclexTopic?: string;
+  nclexSubtopic?: string;
+  /** Cross-topic “General” bucket when true. */
+  isGeneral?: boolean;
   createdBy: string;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
@@ -38,6 +51,7 @@ export interface StudentQuestion {
   id: string;
   title: string;
   questionText: string;
+  stemImageUrl?: string;
   options: QuestionOption[];
   category: string;
   topic?: string;
@@ -60,6 +74,8 @@ export interface QuizResponseItem {
   explanationTag: ExplanationTag;
 }
 
+export type NclexContentKind = "quiz" | "exam" | "notes" | "presentation" | "video";
+
 /** Firestore document in `quizTemplates/{id}` — curated quizzes shown on the student home. */
 export interface QuizTemplate {
   id: string;
@@ -76,6 +92,18 @@ export interface QuizTemplate {
   createdBy: string;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
+  examType?: NclexExamType | null;
+  nclexCategory?: string;
+  nclexTopic?: string;
+  nclexSubtopic?: string;
+  isGeneral?: boolean;
+  /** For future filtering in the content library. */
+  contentKind?: NclexContentKind;
+  /**
+   * When set (non-empty), this quiz uses exactly these question IDs in order instead of scanning the whole category pool.
+   * Used for extracts from the question bank (e.g. tutoring session builder).
+   */
+  fixedQuestionIds?: string[];
 }
 
 export interface QuizTemplateInput {
@@ -86,6 +114,15 @@ export interface QuizTemplateInput {
   estimatedMinutes?: number | null;
   sortOrder?: number;
   isActive?: boolean;
+  examType?: NclexExamType | null;
+  nclexCategory?: string;
+  nclexTopic?: string;
+  nclexSubtopic?: string;
+  isGeneral?: boolean;
+  /** Omit for unchanged; `null` clears stored kind on update. */
+  contentKind?: NclexContentKind | null;
+  /** Replace fixed pool; omit to leave unchanged; `null` or `[]` clears fixed pool (category pool only). */
+  fixedQuestionIds?: string[] | null;
 }
 
 /** Firestore document in `quizSessions/{sessionId}` */
@@ -185,6 +222,8 @@ export interface AdminNotification {
 export interface QuestionInput {
   title: string;
   questionText: string;
+  /** Public HTTPS URL for an optional stem image; omit or null to clear on update. */
+  stemImageUrl?: string | null;
   options: QuestionOption[];
   correctAnswerId: string;
   /** Use `null` on update to clear multi-select answers and store single-key only. */
@@ -195,6 +234,11 @@ export interface QuestionInput {
   category?: string;
   topic?: string;
   isActive?: boolean;
+  examType?: NclexExamType | null;
+  nclexCategory?: string;
+  nclexTopic?: string;
+  nclexSubtopic?: string;
+  isGeneral?: boolean;
   /**
    * Stored under `questions/{id}/adminOnly/default` (not on the question root).
    * Readable by admins only; tutors may set via create/import/update.

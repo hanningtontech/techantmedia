@@ -22,6 +22,7 @@ import {
 } from "@/contexts/FirebaseAuthContext";
 import { saveStudentIntakeQuestionnaire, setStudentNursingTrack } from "@/lib/firestore/usersAdmin";
 import type { IntakeQuestionnaire, NursingTrack } from "@/lib/userTypes";
+import { STUDENT_NCLEX_HUB } from "@/lib/nclex/studentNclexRoutes";
 import { toast } from "sonner";
 
 const EDUCATION_LEVEL_OPTIONS = [
@@ -148,7 +149,7 @@ export default function StudentPendingApprovalPage() {
       return;
     }
     if (!isStudentNclexBlocked(profile)) {
-      navigate("/student/nclex");
+      navigate(STUDENT_NCLEX_HUB);
     }
   }, [loading, profile, navigate]);
 

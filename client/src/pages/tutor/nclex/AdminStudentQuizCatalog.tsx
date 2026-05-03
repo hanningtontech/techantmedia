@@ -4,7 +4,8 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
-import { countQuizQuestionPool, listPublishedQuizTemplates } from "@/lib/firestore/nclex";
+import { useNclexAdminExamType } from "@/hooks/useNclexAdminExamType";
+import { countQuestionsForQuizTemplate, listPublishedQuizTemplates } from "@/lib/firestore/nclex";
 import type { QuizTemplate } from "@/lib/firestore/nclexTypes";
 import { toast } from "sonner";
 import { ArrowLeft, BookOpen, Clock, Eye, ListPlus, Upload } from "lucide-react";
@@ -18,6 +19,7 @@ function categoryQuery(cat: string | null | undefined): string {
 export default function AdminStudentQuizCatalog() {
   const [, navigate] = useLocation();
   const { loading, profile } = useFirebaseAuth();
+  const { adminExamType } = useNclexAdminExamType();
   const [templates, setTemplates] = useState<QuizTemplate[]>([]);
   const [pools, setPools] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(true);
@@ -28,12 +30,15 @@ export default function AdminStudentQuizCatalog() {
     void (async () => {
       setBusy(true);
       try {
-        const tmpl = await listPublishedQuizTemplates();
+        const tmpl = await listPublishedQuizTemplates({ adminExamType });
         if (cancelled) return;
         setTemplates(tmpl);
         const pairs = await Promise.all(
           tmpl.map(async (t) => {
-            const n = await countQuizQuestionPool(t.filterCategory, t.questionLimit > 0 ? t.questionLimit : null);
+            const n = await countQuestionsForQuizTemplate(t, {
+              studentTrack: adminExamType,
+              isAdmin: true,
+            });
             return [t.id, n] as const;
           }),
         );
@@ -47,7 +52,7 @@ export default function AdminStudentQuizCatalog() {
     return () => {
       cancelled = true;
     };
-  }, [profile]);
+  }, [profile, adminExamType]);
 
   const minutesByTemplate = useMemo(() => {
     const m = new Map<string, number>();

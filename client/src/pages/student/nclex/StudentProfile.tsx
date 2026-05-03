@@ -9,6 +9,7 @@ import { NclexHeader } from "@/components/nclex/NclexHeader";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { updateMyIntakeQuestionnaire, updateMyProfile } from "@/lib/firestore/userSelf";
 import type { IntakeQuestionnaire, NursingTrack } from "@/lib/userTypes";
+import { STUDENT_NCLEX_DASHBOARD } from "@/lib/nclex/studentNclexRoutes";
 import { toast } from "sonner";
 
 const EDUCATION_LEVEL_OPTIONS = [
@@ -158,7 +159,7 @@ export default function StudentProfile() {
       await updateMyProfile(profile.uid, { name: displayName, nursingTrack: track as NursingTrack });
       await updateMyIntakeQuestionnaire(profile.uid, intake);
       toast.success("Profile updated.");
-      navigate("/student/nclex");
+      navigate(STUDENT_NCLEX_DASHBOARD);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -185,7 +186,12 @@ export default function StudentProfile() {
 
   return (
     <div className="nclex-app nclex-shell min-h-screen">
-      <NclexHeader title="Your profile" subtitle="Update your preferences" homeHref="/student/nclex" homeLabel="Dashboard" />
+      <NclexHeader
+        title="Your profile"
+        subtitle="Update your preferences"
+        homeHref={STUDENT_NCLEX_DASHBOARD}
+        homeLabel="Dashboard"
+      />
       <main className="nclex-main mx-auto max-w-3xl space-y-6 py-6 sm:py-8 xl:max-w-4xl">
         <Card className="nclex-card shadow-md">
           <CardHeader>
@@ -273,7 +279,7 @@ export default function StudentProfile() {
                 <Button type="submit" className="nclex-btn-primary" disabled={busy || !canSave}>
                   {busy ? "Saving…" : "Save changes"}
                 </Button>
-                <Button type="button" variant="outline" disabled={busy} onClick={() => navigate("/student/nclex")}>
+                <Button type="button" variant="outline" disabled={busy} onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
                   Cancel
                 </Button>
               </div>

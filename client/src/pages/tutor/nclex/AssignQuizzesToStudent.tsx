@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useFirebaseAuth, isTutorOrAdmin } from "@/contexts/FirebaseAuthContext";
+import { useNclexAdminExamType } from "@/hooks/useNclexAdminExamType";
 import {
   assignQuizTemplateToStudent,
   createQuizTemplate,
@@ -25,6 +26,7 @@ export default function AssignQuizzesToStudent() {
   const { studentId } = useParams() as { studentId: string };
   const [, navigate] = useLocation();
   const { profile, loading } = useFirebaseAuth();
+  const { adminExamType } = useNclexAdminExamType();
   const [templates, setTemplates] = useState<QuizTemplate[]>([]);
   const [assigned, setAssigned] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
@@ -40,7 +42,11 @@ export default function AssignQuizzesToStudent() {
   const reload = async () => {
     if (!profile || !isTutorOrAdmin(profile)) return;
     const [all, ids, cats, sess] = await Promise.all([
-      listQuizTemplatesForEditor({ tutorUid: profile.uid, isAdmin: profile.role === "admin" }),
+      listQuizTemplatesForEditor({
+        tutorUid: profile.uid,
+        isAdmin: profile.role === "admin",
+        adminExamType,
+      }),
       listAssignedTemplateIds(studentId),
       getQuestionCategorySummaries(),
       getStudentQuizzes(studentId),
@@ -85,7 +91,7 @@ export default function AssignQuizzesToStudent() {
       toast.error("Could not load quizzes");
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentId, profile, loading]);
+  }, [studentId, profile, loading, adminExamType]);
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();

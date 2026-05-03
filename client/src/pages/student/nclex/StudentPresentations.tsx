@@ -10,6 +10,7 @@ import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { useRedirectStudentIfPending } from "@/hooks/useStudentNclexAccessGuard";
 import { listPublishedPresentations, type ClassPresentation } from "@/lib/firestore/presentations";
 import { formatAuthOrFirestoreError } from "@/lib/authErrorMessage";
+import { STUDENT_NCLEX_DASHBOARD } from "@/lib/nclex/studentNclexRoutes";
 import { toast } from "sonner";
 import { ArrowLeft, Presentation } from "lucide-react";
 
@@ -69,7 +70,7 @@ export default function StudentPresentations() {
   if (loading) {
     return (
       <div className="nclex-app nclex-shell min-h-screen">
-        <NclexHeader title="Presentations" homeHref="/student/nclex" homeLabel="Dashboard" />
+        <NclexHeader title="Presentations" homeHref={STUDENT_NCLEX_DASHBOARD} homeLabel="Dashboard" />
         <div className="nclex-main flex min-h-[40vh] flex-col items-center justify-center gap-3 py-16">
           <div className="h-9 w-9 animate-spin rounded-full border-2 border-blue-200 border-t-[var(--nclex-primary)]" />
           <p className="text-sm font-medium text-slate-700">Loading…</p>
@@ -84,7 +85,7 @@ export default function StudentPresentations() {
         <Card className="nclex-card mx-auto max-w-md">
           <CardContent className="space-y-4 p-6">
             <p className="text-sm font-medium text-slate-800">Sign in to view presentations.</p>
-            <Button className="nclex-btn-primary" onClick={() => navigate("/student/nclex")}>
+            <Button className="nclex-btn-primary" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
               Student home
             </Button>
           </CardContent>
@@ -98,12 +99,12 @@ export default function StudentPresentations() {
       <NclexHeader
         title="Presentations"
         subtitle="PPTX resources shared by your instructor"
-        homeHref="/student/nclex"
+        homeHref={STUDENT_NCLEX_DASHBOARD}
         homeLabel="Dashboard"
       />
 
       <main className="nclex-main mx-auto max-w-4xl space-y-5 pt-2 sm:space-y-6 xl:max-w-5xl">
-        <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate("/student/nclex")}>
+        <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
           <ArrowLeft className="h-4 w-4" />
           Dashboard
         </Button>

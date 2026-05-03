@@ -4,9 +4,12 @@
  */
 
 import type { QuestionOption } from "@/lib/firestore/nclexTypes";
+import { normalizeHttpUrlForMedia } from "@/lib/nclex/nclexQuestionMedia";
 
 export type ParsedBulkQuestion = {
   questionText: string;
+  /** From an `Image URL:` / `Image stem URL:` line in the stem block, or paired upload file. */
+  stemImageUrl?: string;
   options: QuestionOption[];
   correctAnswerId: string;
   rationale: string;
@@ -36,6 +39,16 @@ const RATIONALE_START = /^Rationale:\s*(.*)$/i;
 const WHY_OTHERS_START = /^Why\s+the\s+others\s+are\s+not\s+correct:\s*(.*)$/i;
 const CATEGORY_LINE = /^Category:\s*(.+)$/i;
 const TOPIC_LINE = /^Topic:\s*(.+)$/i;
+/** e.g. `Image URL: https://...` or `Image stem URL: https://...` (anywhere in the stem, before options). */
+const IMAGE_STEM_URL_LINE = /^Image(?:\s+stem)?\s*URL:\s*(.+)$/i;
+
+function normalizeStemImageUrl(raw: string): string | undefined {
+  const u = normalizeHttpUrlForMedia(raw);
+  if (!u) return undefined;
+  const lower = u.toLowerCase();
+  if (!lower.startsWith("https://") && !lower.startsWith("http://")) return undefined;
+  return u;
+}
 
 function trimLines(block: string): string[] {
   return block
@@ -109,7 +122,8 @@ function dedupeKey(q: ParsedBulkQuestion): string {
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((o) => `${o.id}:${o.text.trim().toLowerCase()}`)
     .join("|");
-  return `${stem}::${opts}`;
+  const img = (q.stemImageUrl ?? "").trim().toLowerCase();
+  return `${stem}::${opts}::${img}`;
 }
 
 function dedupeParsedQuestions(questions: ParsedBulkQuestion[]): {
@@ -162,7 +176,18 @@ export function parseStructuredQuestionBlock(block: string, blockIndex: number):
     };
   }
 
-  const stemLines = lines.slice(i, firstOpt);
+  const stemLinesRaw = lines.slice(i, firstOpt);
+  let stemImageUrl: string | undefined;
+  const stemLines: string[] = [];
+  for (const line of stemLinesRaw) {
+    const im = line.match(IMAGE_STEM_URL_LINE);
+    if (im) {
+      const u = normalizeStemImageUrl(im[1] ?? "");
+      if (u) stemImageUrl = u;
+      continue;
+    }
+    stemLines.push(line);
+  }
   const questionText = stemLines.join("\n").trim();
   if (!questionText) {
     return {
@@ -290,6 +315,7 @@ export function parseStructuredQuestionBlock(block: string, blockIndex: number):
     options,
     correctAnswerId,
     rationale,
+    ...(stemImageUrl ? { stemImageUrl } : {}),
     ...(whyOthersIncorrect ? { whyOthersIncorrect } : {}),
   };
 }

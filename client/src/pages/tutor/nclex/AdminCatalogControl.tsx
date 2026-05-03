@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useFirebaseAuth, isTutorOrAdmin } from "@/contexts/FirebaseAuthContext";
+import { useNclexAdminExamType } from "@/hooks/useNclexAdminExamType";
 import {
   deleteQuizTemplate,
   getQuestionCategorySummaries,
@@ -18,6 +19,7 @@ const CATALOG_CACHE_KEY = "nclex_admin_catalog_cache_v1";
 export default function AdminCatalogControl() {
   const [, navigate] = useLocation();
   const { profile, loading } = useFirebaseAuth();
+  const { adminExamType } = useNclexAdminExamType();
   const [templates, setTemplates] = useState<QuizTemplate[]>([]);
   const [categories, setCategories] = useState<Array<{ category: string; count: number }>>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -25,7 +27,7 @@ export default function AdminCatalogControl() {
   const reload = async () => {
     if (!profile || !isTutorOrAdmin(profile) || profile.role !== "admin") return;
     const [t, c] = await Promise.all([
-      listQuizTemplatesForEditor({ tutorUid: profile.uid, isAdmin: true }),
+      listQuizTemplatesForEditor({ tutorUid: profile.uid, isAdmin: true, adminExamType }),
       getQuestionCategorySummaries(),
     ]);
     setTemplates(t);
@@ -55,7 +57,7 @@ export default function AdminCatalogControl() {
     }
     void reload().catch(() => toast.error("Could not load catalog"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, loading]);
+  }, [profile, loading, adminExamType]);
 
   const activeTemplates = useMemo(() => templates.filter((t) => t.isActive), [templates]);
   const inactiveTemplates = useMemo(() => templates.filter((t) => !t.isActive), [templates]);

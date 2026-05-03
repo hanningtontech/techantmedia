@@ -21,6 +21,7 @@ import {
   toStudentQuestion,
 } from "@/lib/firestore/nclex";
 import type { Question, QuizSession } from "@/lib/firestore/nclexTypes";
+import { STUDENT_NCLEX_DASHBOARD } from "@/lib/nclex/studentNclexRoutes";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 
@@ -142,7 +143,7 @@ export default function QuizResults() {
           <Card className="nclex-card">
             <CardContent className="space-y-4 p-6">
               <p className="text-sm font-medium text-slate-800">Sign in to view your results.</p>
-              <Button className="nclex-btn-primary" onClick={() => navigate("/student/nclex")}>
+              <Button className="nclex-btn-primary" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
                 Student home
               </Button>
             </CardContent>
@@ -161,7 +162,7 @@ export default function QuizResults() {
           subtitle="Connecting to your attempt. If this takes long, check your connection and open the quiz again."
         />
         <div className="flex justify-center pb-10">
-          <Button type="button" variant="outline" size="sm" onClick={() => navigate("/student/nclex")}>
+          <Button type="button" variant="outline" size="sm" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
             Back to dashboard
           </Button>
         </div>
@@ -207,7 +208,7 @@ export default function QuizResults() {
                 <Button variant="outline" onClick={() => navigate(`/student/nclex/quiz/${sessionId}`)}>
                   Continue quiz
                 </Button>
-                <Button variant="outline" onClick={() => navigate("/student/nclex")}>
+                <Button variant="outline" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
                   Back to dashboard
                 </Button>
               </div>
@@ -222,7 +223,7 @@ export default function QuizResults() {
     return (
       <div className="container py-16">
         <p className="text-muted-foreground">Results not found.</p>
-        <Button className="mt-4" onClick={() => navigate("/student/nclex")}>
+        <Button className="mt-4" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
           Back
         </Button>
       </div>
@@ -254,7 +255,7 @@ export default function QuizResults() {
                 Listening for your tutor — your results will appear here as soon as they are released.
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-                <Button variant="outline" onClick={() => navigate("/student/nclex")}>
+                <Button variant="outline" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
                   Back to dashboard
                 </Button>
               </div>
@@ -341,7 +342,7 @@ export default function QuizResults() {
   return (
     <div className="nclex-app nclex-shell min-h-screen py-6 sm:py-10">
       <div className="nclex-main mx-auto max-w-3xl space-y-5 sm:space-y-6 xl:max-w-4xl 2xl:max-w-5xl">
-        <Button variant="ghost" size="sm" className="gap-1 text-slate-700" onClick={() => navigate("/student/nclex")}>
+        <Button variant="ghost" size="sm" className="gap-1 text-slate-700" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
           <ArrowLeft className="h-4 w-4" />
           Back to dashboard
         </Button>
@@ -424,6 +425,7 @@ export default function QuizResults() {
                 correctIds={getCorrectAnswerIds(q)}
                 readOnly
                 compact
+                imageLoading="eager"
               />
               <ExplanationScoreDisplay score={r.adminOverrideScore ?? r.explanationScore} />
               {r.studentExplanation ? (
@@ -446,12 +448,12 @@ export default function QuizResults() {
             <Button className="sm:flex-1" onClick={() => navigate(`/student/nclex/quiz/${sessionId}`)}>
               Continue with test
             </Button>
-            <Button variant="outline" className="sm:flex-1" onClick={() => navigate("/student/nclex")}>
+            <Button variant="outline" className="sm:flex-1" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
               Dashboard
             </Button>
           </div>
         ) : (
-          <Button onClick={() => navigate("/student/nclex")}>Done</Button>
+          <Button onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>Done</Button>
         )}
       </div>
     </div>

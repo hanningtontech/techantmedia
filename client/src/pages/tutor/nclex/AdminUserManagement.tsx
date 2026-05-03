@@ -8,6 +8,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useFirebaseAuth, isTutorOrAdmin } from "@/contexts/FirebaseAuthContext";
+import { useNclexAdminExamType } from "@/hooks/useNclexAdminExamType";
+import { templateVisibleToStudent } from "@/lib/nclex/examTypeFilters";
 import {
   getUserForAdmin,
   listUsersForAdminPage,
@@ -29,7 +31,7 @@ import {
   listQuizTemplatesForEditor,
 } from "@/lib/firestore/nclex";
 import type { QuizTemplate } from "@/lib/firestore/nclexTypes";
-import type { UserListRow } from "@/lib/userTypes";
+import type { NursingTrack, UserListRow } from "@/lib/userTypes";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 
@@ -37,9 +39,15 @@ const QUIZ_CACHE_KEY = "nclex_admin_quiz_catalog_cache_v1";
 const CAT_CACHE_KEY = "nclex_admin_category_cache_v1";
 const PAGE_SIZE_KEY = "nclex_admin_users_page_size_v1";
 
+function quizTemplateAssignableToStudent(t: QuizTemplate, studentTrack: NursingTrack | null | undefined): boolean {
+  if (!studentTrack) return t.examType == null || t.examType === "both";
+  return templateVisibleToStudent(t.examType, studentTrack);
+}
+
 export default function AdminUserManagement() {
   const [, navigate] = useLocation();
   const { profile, loading } = useFirebaseAuth();
+  const { adminExamType } = useNclexAdminExamType();
 
   const [templates, setTemplates] = useState<QuizTemplate[]>([]);
   const [categories, setCategories] = useState<Array<{ category: string; count: number }>>([]);
@@ -141,20 +149,6 @@ export default function AdminUserManagement() {
     }
 
     void loadPage(null, true);
-    void listQuizTemplatesForEditor({ tutorUid: profile.uid, isAdmin: true })
-      .then((t) => {
-        setTemplates(t);
-        setQuizLoadErr(null);
-        try {
-          sessionStorage.setItem(QUIZ_CACHE_KEY, JSON.stringify({ at: Date.now(), templates: t }));
-        } catch {
-          // ignore
-        }
-      })
-      .catch((e) => {
-        setTemplates([]);
-        setQuizLoadErr(e instanceof Error ? e.message : "Could not load quiz catalog");
-      });
     void getQuestionCategorySummaries()
       .then((c) => {
         setCategories(c);
@@ -197,6 +191,24 @@ export default function AdminUserManagement() {
       .catch(() => setNeedsAttentionIds(new Set()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
+
+  useEffect(() => {
+    if (!profile || profile.role !== "admin") return;
+    void listQuizTemplatesForEditor({ tutorUid: profile.uid, isAdmin: true, adminExamType })
+      .then((t) => {
+        setTemplates(t);
+        setQuizLoadErr(null);
+        try {
+          sessionStorage.setItem(QUIZ_CACHE_KEY, JSON.stringify({ at: Date.now(), templates: t }));
+        } catch {
+          // ignore
+        }
+      })
+      .catch((e) => {
+        setTemplates([]);
+        setQuizLoadErr(e instanceof Error ? e.message : "Could not load quiz catalog");
+      });
+  }, [profile, adminExamType]);
 
   useEffect(() => {
     if (!profile || profile.role !== "admin") return;
@@ -275,8 +287,10 @@ export default function AdminUserManagement() {
 
   const templateOptions = useMemo(() => {
     const active = templates.filter((t) => t.isActive);
-    return active.length ? active : templates;
-  }, [templates]);
+    const base = active.length ? active : templates;
+    if (!selectedUser || selectedUser.role !== "student") return base;
+    return base.filter((t) => quizTemplateAssignableToStudent(t, selectedUser.nursingTrack ?? null));
+  }, [templates, selectedUser]);
 
   const visible = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -851,6 +865,10 @@ export default function AdminUserManagement() {
                                         ) ?? null;
                                       if (existing) tid = existing.id;
                                       else {
+                                        if (!adminExamType) {
+                                          toast.error("Select NCLEX-RN or NCLEX-PN on the tutor dashboard before auto-creating a quiz.");
+                                          return;
+                                        }
                                         tid = await createQuizTemplate(
                                           {
                                             title: `${pickedCategory} quiz`,
@@ -860,10 +878,15 @@ export default function AdminUserManagement() {
                                             estimatedMinutes: null,
                                             sortOrder: 0,
                                             isActive: true,
+                                            examType: adminExamType,
                                           },
                                           profile.uid,
                                         );
-                                        const all = await listQuizTemplatesForEditor({ tutorUid: profile.uid, isAdmin: true });
+                                        const all = await listQuizTemplatesForEditor({
+                                          tutorUid: profile.uid,
+                                          isAdmin: true,
+                                          adminExamType,
+                                        });
                                         setTemplates(all);
                                       }
                                     }

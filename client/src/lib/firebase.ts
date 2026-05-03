@@ -5,7 +5,7 @@
 import { getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
 import { getAnalytics, isSupported, type Analytics } from "firebase/analytics";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 function readConfig(): FirebaseOptions | null {
@@ -78,7 +78,15 @@ export function getFirebaseAnalytics(): Analytics | null {
 
 export function getFirestoreDb(): Firestore {
   if (!db) {
-    db = getFirestore(getFirebaseApp());
+    const fa = getFirebaseApp();
+    try {
+      // Avoids flaky QUIC/WebChannel on some networks (e.g. ERR_QUIC_PROTOCOL_ERROR on Listen).
+      db = initializeFirestore(fa, {
+        experimentalForceLongPolling: true,
+      });
+    } catch {
+      db = getFirestore(fa);
+    }
   }
   return db;
 }

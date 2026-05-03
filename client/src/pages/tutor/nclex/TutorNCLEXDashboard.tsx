@@ -11,6 +11,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useFirebaseAuth, isTutorOrAdmin } from "@/contexts/FirebaseAuthContext";
+import { useNclexAdminExamType } from "@/hooks/useNclexAdminExamType";
+import { NCLEX_EXAM_LABELS } from "@/lib/nclex/nclexCatalogHierarchy";
 import { listAdminNotifications, listAdminScoreNotifications } from "@/lib/firestore/nclex";
 import {
   ArrowLeft,
@@ -18,6 +20,8 @@ import {
   BookOpen,
   BookText,
   ClipboardList,
+  FileText,
+  GraduationCap,
   LayoutList,
   LineChart,
   MessageCircle,
@@ -31,6 +35,7 @@ import {
 export default function TutorNCLEXDashboard() {
   const [, navigate] = useLocation();
   const { firebaseReady, loading, profile } = useFirebaseAuth();
+  const { adminExamType, setAdminExamType } = useNclexAdminExamType();
   const [openCount, setOpenCount] = useState<number>(0);
 
   useEffect(() => {
@@ -157,6 +162,38 @@ export default function TutorNCLEXDashboard() {
       </header>
 
       <main className="container py-10">
+        <Card
+          className={`mb-8 ${adminExamType ? "border-emerald-200 bg-emerald-50/40" : "border-amber-300 bg-amber-50/90"}`}
+        >
+          <CardHeader>
+            <CardTitle className="text-lg">NCLEX workspace</CardTitle>
+            <CardDescription>
+              Choose <strong>NCLEX-RN</strong> or <strong>NCLEX-PN</strong> before creating quizzes, notes, or assignments.
+              This filters what you see in tutor tools (stored on this browser only).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            {(["rn", "pn"] as const).map((k) => (
+              <Button
+                key={k}
+                type="button"
+                variant={adminExamType === k ? "default" : "outline"}
+                className={adminExamType === k ? "bg-blue-600 hover:bg-blue-700" : ""}
+                onClick={() => setAdminExamType(k)}
+              >
+                {NCLEX_EXAM_LABELS[k].title}
+              </Button>
+            ))}
+            {adminExamType ? (
+              <span className="text-sm text-slate-700">
+                Active: <span className="font-semibold">{NCLEX_EXAM_LABELS[adminExamType].short}</span>
+              </span>
+            ) : (
+              <span className="text-sm font-medium text-amber-900">Select a track to align new content.</span>
+            )}
+          </CardContent>
+        </Card>
+
         <div className="mb-8 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-100 text-orange-700">
             <BookOpen className="h-6 w-6" />
@@ -180,6 +217,44 @@ export default function TutorNCLEXDashboard() {
               <CardContent>
                 <Button asChild className="bg-blue-600 hover:bg-blue-700">
                   <Link href="/tutor/nclex/presentations">Upload PPTX</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {isTutorOrAdmin(profile) ? (
+            <Card className="hover:shadow-md border-violet-200 bg-violet-50/50 transition-shadow">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <GraduationCap className="h-5 w-5" />
+                  Tutoring sessions
+                </CardTitle>
+                <CardDescription>
+                  Instructor-led sessions: blueprint tags, roster, attach quizzes, publish and assign to students.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild className="bg-violet-600 hover:bg-violet-700">
+                  <Link href="/tutor/nclex/tutoring-sessions">Manage sessions</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {profile.role === "admin" ? (
+            <Card className="hover:shadow-md border-slate-200 bg-slate-50/50 transition-shadow">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <LineChart className="h-5 w-5" />
+                  Topic progress
+                </CardTitle>
+                <CardDescription>
+                  Average released scores by NCLEX topic for a student (admin).
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="outline">
+                  <Link href="/tutor/nclex/topic-progress">Open</Link>
                 </Button>
               </CardContent>
             </Card>
@@ -316,6 +391,25 @@ export default function TutorNCLEXDashboard() {
               <CardContent>
                 <Button asChild className="bg-blue-600 hover:bg-blue-700">
                   <Link href="/tutor/nclex/presentations">Manage</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {isTutorOrAdmin(profile) ? (
+            <Card className="hover:shadow-md border-violet-200 bg-violet-50/50 transition-shadow">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <FileText className="h-5 w-5" />
+                  Class notes (text)
+                </CardTitle>
+                <CardDescription>
+                  Structured notes by category/topic; tagged RN or PN. Students read them under Class notes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild className="bg-violet-600 hover:bg-violet-700">
+                  <Link href="/tutor/nclex/class-notes">Manage notes</Link>
                 </Button>
               </CardContent>
             </Card>

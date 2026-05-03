@@ -9,6 +9,7 @@ import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { useRedirectStudentIfPending } from "@/hooks/useStudentNclexAccessGuard";
 import { listPublishedStudyGuides, type StudyGuide } from "@/lib/firestore/studyGuides";
 import { formatAuthOrFirestoreError } from "@/lib/authErrorMessage";
+import { STUDENT_NCLEX_DASHBOARD } from "@/lib/nclex/studentNclexRoutes";
 import { toast } from "sonner";
 import { ArrowLeft, BookText } from "lucide-react";
 
@@ -68,7 +69,7 @@ export default function StudentStudyGuides() {
   if (loading) {
     return (
       <div className="nclex-app nclex-shell min-h-screen">
-        <NclexHeader title="Study guides" homeHref="/student/nclex" homeLabel="Dashboard" />
+        <NclexHeader title="Study guides" homeHref={STUDENT_NCLEX_DASHBOARD} homeLabel="Dashboard" />
         <div className="nclex-main flex min-h-[40vh] flex-col items-center justify-center gap-3 py-16">
           <div className="h-9 w-9 animate-spin rounded-full border-2 border-blue-200 border-t-[var(--nclex-primary)]" />
           <p className="text-sm font-medium text-slate-700">Loading…</p>
@@ -83,7 +84,7 @@ export default function StudentStudyGuides() {
         <Card className="nclex-card mx-auto max-w-md">
           <CardContent className="space-y-4 p-6">
             <p className="text-sm font-medium text-slate-800">Sign in to view study guides.</p>
-            <Button className="nclex-btn-primary" onClick={() => navigate("/student/nclex")}>
+            <Button className="nclex-btn-primary" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
               Student home
             </Button>
           </CardContent>
@@ -97,12 +98,12 @@ export default function StudentStudyGuides() {
       <NclexHeader
         title="Study guides"
         subtitle="PDF/DOC resources shared by your instructor"
-        homeHref="/student/nclex"
+        homeHref={STUDENT_NCLEX_DASHBOARD}
         homeLabel="Dashboard"
       />
 
       <main className="nclex-main mx-auto max-w-4xl space-y-5 pt-2 sm:space-y-6 xl:max-w-5xl">
-        <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate("/student/nclex")}>
+        <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
           <ArrowLeft className="h-4 w-4" />
           Dashboard
         </Button>

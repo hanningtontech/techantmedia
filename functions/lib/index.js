@@ -29,7 +29,10 @@ const firestore_1 = require("firebase-functions/v2/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
 const crypto = __importStar(require("crypto"));
-admin.initializeApp();
+function ensureAdmin() {
+    if (!admin.apps.length)
+        admin.initializeApp();
+}
 const B2_KEY_ID = (0, params_1.defineSecret)("B2_KEY_ID");
 const B2_APP_KEY = (0, params_1.defineSecret)("B2_APP_KEY");
 const B2_BUCKET_ID = (0, params_1.defineSecret)("B2_BUCKET_ID");
@@ -45,6 +48,7 @@ function bool(x) {
     return typeof x === "boolean" ? x : undefined;
 }
 async function upsertAdminNotification(args) {
+    ensureAdmin();
     const db = admin.firestore();
     await db
         .doc(`adminNotifications/${args.id}`)
@@ -63,6 +67,7 @@ async function upsertAdminNotification(args) {
     }, { merge: true });
 }
 async function resolveAdminNotification(id) {
+    ensureAdmin();
     const db = admin.firestore();
     await db
         .doc(`adminNotifications/${id}`)
@@ -70,6 +75,7 @@ async function resolveAdminNotification(id) {
         .catch(() => { });
 }
 exports.onQuizSessionWrite = (0, firestore_1.onDocumentWritten)("quizSessions/{sessionId}", async (event) => {
+    ensureAdmin();
     const before = (event.data?.before.exists ? event.data.before.data() : null) ?? null;
     const after = (event.data?.after.exists ? event.data.after.data() : null) ?? null;
     const sessionId = event.params.sessionId;
@@ -152,6 +158,7 @@ exports.onQuizSessionWrite = (0, firestore_1.onDocumentWritten)("quizSessions/{s
     }
 });
 exports.onQuizAssignmentWrite = (0, firestore_1.onDocumentWritten)("quizAssignments/{assignmentId}", async (event) => {
+    ensureAdmin();
     const before = (event.data?.before.exists ? event.data.before.data() : null) ?? null;
     const after = (event.data?.after.exists ? event.data.after.data() : null) ?? null;
     if (!after)
@@ -181,6 +188,7 @@ function json(res, status, body) {
     res.send(JSON.stringify(body));
 }
 async function requireTutorOrAdminFromBearer(req) {
+    ensureAdmin();
     const header = String(req.headers?.authorization ?? "");
     const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
     if (!token)
@@ -235,6 +243,7 @@ exports.api = (0, https_1.onRequest)({
     memory: "512MiB",
 }, async (req, res) => {
     try {
+        ensureAdmin();
         const rawPath = String(req.path ?? req.url ?? "");
         // Normalize path from various Firebase/Express shapes:
         // - "/api/..." (hosting rewrite prefix)
@@ -258,15 +267,24 @@ exports.api = (0, https_1.onRequest)({
                 return "presentations";
             if (path.startsWith("/b2/study-guides/"))
                 return "study-guides";
+            if (path.startsWith("/b2/quiz-images/"))
+                return "quiz-images";
             return null;
         };
         const isAllowedExt = (k, filename) => {
             const n = filename.toLowerCase();
             if (k === "presentations")
                 return n.endsWith(".pptx");
+            if (k === "quiz-images") {
+                return (n.endsWith(".png") ||
+                    n.endsWith(".jpg") ||
+                    n.endsWith(".jpeg") ||
+                    n.endsWith(".gif") ||
+                    n.endsWith(".webp"));
+            }
             return n.endsWith(".pdf") || n.endsWith(".docx") || n.endsWith(".doc");
         };
-        const defaultName = (k) => (k === "presentations" ? "presentation.pptx" : "study-guide.pdf");
+        const defaultName = (k) => k === "presentations" ? "presentation.pptx" : k === "quiz-images" ? "image.png" : "study-guide.pdf";
         // Public file proxy (published only). This makes Office viewer + downloads reliable.
         if (req.method === "GET" && (path.startsWith("/public/presentations/") || path.startsWith("/public/study-guides/"))) {
             const isPptx = path.startsWith("/public/presentations/");
@@ -342,7 +360,11 @@ exports.api = (0, https_1.onRequest)({
         const kind = kindFromPath();
         if (req.method === "POST" && kind) {
             await requireTutorOrAdminFromBearer(req);
-            const basePrefix = kind === "presentations" ? "/b2/presentations/" : "/b2/study-guides/";
+            const basePrefix = kind === "presentations"
+                ? "/b2/presentations/"
+                : kind === "study-guides"
+                    ? "/b2/study-guides/"
+                    : "/b2/quiz-images/";
             const docId = decodeURIComponent(path.replace(basePrefix, "").split("?")[0] || "").trim();
             if (!docId)
                 return json(res, 400, { error: "Missing docId" });
@@ -351,7 +373,9 @@ exports.api = (0, https_1.onRequest)({
                 return json(res, 400, {
                     error: kind === "presentations"
                         ? "Only .pptx files are supported"
-                        : "Only .pdf, .doc, or .docx files are supported",
+                        : kind === "quiz-images"
+                            ? "Only .png, .jpg, .jpeg, .gif, or .webp images are supported"
+                            : "Only .pdf, .doc, or .docx files are supported",
                 });
             }
             const buf = req.rawBody;
@@ -361,12 +385,18 @@ exports.api = (0, https_1.onRequest)({
             const contentType = contentTypeRaw ||
                 (kind === "presentations"
                     ? "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    : "application/octet-stream");
+                    : kind === "quiz-images"
+                        ? "application/octet-stream"
+                        : "application/octet-stream");
             const sha1 = crypto.createHash("sha1").update(buf).digest("hex");
             const auth = await b2Authorize();
             const up = await b2GetUploadUrl(auth);
             const bucketName = B2_BUCKET_NAME.value();
-            const prefix = kind === "presentations" ? "class-presentations" : "class-study-guides";
+            const prefix = kind === "presentations"
+                ? "class-presentations"
+                : kind === "study-guides"
+                    ? "class-study-guides"
+                    : "quiz-question-images";
             const b2FileName = `${prefix}/${docId}/${originalName}`;
             const uploadRes = await fetch(up.uploadUrl, {
                 method: "POST",

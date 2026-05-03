@@ -4,7 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useFirebaseAuth, isTutorOrAdmin } from "@/contexts/FirebaseAuthContext";
-import { bulkImportQuestions, getQuizTemplateById, listPreviewQuestionsForQuizTemplate, updateQuizTemplate } from "@/lib/firestore/nclex";
+import { useNclexAdminExamType } from "@/hooks/useNclexAdminExamType";
+import {
+  bulkImportQuestions,
+  getQuizTemplateById,
+  listPreviewQuestionsForQuizTemplate,
+  updateQuizTemplate,
+} from "@/lib/firestore/nclex";
+import type { NclexExamType } from "@/lib/firestore/nclexTypes";
+import {
+  NclexBlueprintSelects,
+  labelsFromBlueprintSelection,
+  type NclexBlueprintSelection,
+} from "@/components/nclex/NclexBlueprintSelects";
+import { uploadQuizStemImage } from "@/lib/firestore/quizStemImages";
 import { parseNclexAdminBulkPaste } from "@/lib/nclex/bulkImportParser";
 import { parseBulkQuestions } from "@/lib/nclex/keywordExtractor";
 import { toast } from "sonner";
@@ -19,6 +32,7 @@ Topic: Cardiovascular + Priority & Clinical Judgment
 ________________________________________
 Question 1
 …stem text…
+(Optional) Image URL: https://example.com/figure.png
 A) First option   (or "A. First option" from Word)
 B) Second option
 C) Third option
@@ -34,6 +48,8 @@ Why the others are not correct:
 (Optional; stored for admins only — students never see this.)
 A. …
 B. …
+
+You can also attach images in order: use “Stem images (optional)” below — the first file pairs with Question 1, etc. A pasted Image URL line wins over a file for that same question.
 
 If the preview count is higher than your real bank, you likely pasted the same questions twice or merged a rationale into the next question. Identical duplicate blocks are collapsed to one unique item.
 
@@ -56,9 +72,12 @@ What happens:
 export default function BulkImport() {
   const [loc, navigate] = useLocation();
   const { profile, loading } = useFirebaseAuth();
+  const { adminExamType } = useNclexAdminExamType();
+  const [importBlueprint, setImportBlueprint] = useState<NclexBlueprintSelection>({ catId: "", topicId: "", subId: "" });
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [docxBusy, setDocxBusy] = useState(false);
+  const [stemImageFiles, setStemImageFiles] = useState<File[]>([]);
   const seededCategoryHeader = useRef(false);
   const [templateHint, setTemplateHint] = useState<{
     templateId: string;
@@ -109,7 +128,11 @@ export default function BulkImport() {
       try {
         const t = await getQuizTemplateById(urlTemplateId);
         if (cancelled || !t) return;
-        const qs = await listPreviewQuestionsForQuizTemplate(t, { isAdmin: profile.role === "admin", tutorUid: profile.uid });
+        const qs = await listPreviewQuestionsForQuizTemplate(t, {
+          isAdmin: profile.role === "admin",
+          tutorUid: profile.uid,
+          studentTrack: adminExamType ?? null,
+        });
         if (cancelled) return;
         setTemplateHint({
           templateId: t.id,
@@ -125,7 +148,7 @@ export default function BulkImport() {
     return () => {
       cancelled = true;
     };
-  }, [urlTemplateId, profile]);
+  }, [urlTemplateId, profile, adminExamType]);
 
   useEffect(() => {
     // When importing "into an existing quiz category" (templateId present), don't force a Category header into the box.
@@ -167,6 +190,17 @@ export default function BulkImport() {
     return { mode: "legacy" as const, structured, legacyCount: legacy.length };
   }, [effectiveText]);
 
+  const stemImageHint = useMemo(() => {
+    const nFiles = stemImageFiles.length;
+    if (preview.mode === "structured") {
+      const fromText = preview.structured.questions.filter((q) => q.stemImageUrl).length;
+      if (!fromText && !nFiles) return "";
+      return `${fromText} stem image URL(s) in paste · ${nFiles} image file(s) selected (URL in text overrides file for that question).`;
+    }
+    if (!nFiles) return "";
+    return `${nFiles} image file(s) will attach to questions 1–${nFiles} in order (legacy import).`;
+  }, [preview, stemImageFiles]);
+
   const shownWarnings = useMemo(() => {
     const ws = preview.mode === "structured" ? preview.structured.warnings : [];
     if (!additiveMode) return ws;
@@ -186,6 +220,7 @@ export default function BulkImport() {
       correctAnswerId: string;
       rationale: string;
       whyOthersIncorrect?: string;
+      stemImageUrl?: string;
       category: string;
       topic?: string;
       isActive: boolean;
@@ -193,17 +228,18 @@ export default function BulkImport() {
 
     // Ensure additive imports always know the current template pool count/limit for numbering + cap updates,
     // even if the header hint failed to load.
-    const runtimeTemplate =
-      additiveMode && urlTemplateId
-        ? (templateHint ?? (await getQuizTemplateById(urlTemplateId)))
-        : null;
+    const runtimeTemplate = additiveMode && urlTemplateId ? await getQuizTemplateById(urlTemplateId) : null;
 
     const runtimeCount =
       runtimeTemplate && urlTemplateId
         ? (
             await listPreviewQuestionsForQuizTemplate(
               { filterCategory: runtimeTemplate.filterCategory ?? null, questionLimit: runtimeTemplate.questionLimit ?? 0 },
-              { isAdmin: profile.role === "admin", tutorUid: profile.uid },
+              {
+                isAdmin: profile.role === "admin",
+                tutorUid: profile.uid,
+                studentTrack: adminExamType ?? null,
+              },
             )
           ).length
         : templateHint?.currentCount ?? 0;
@@ -249,7 +285,36 @@ export default function BulkImport() {
 
     setBusy(true);
     try {
-      const ids = await bulkImportQuestions(inputs, profile.uid);
+      const uploadedUrls: string[] = [];
+      for (const f of stemImageFiles) {
+        uploadedUrls.push(await uploadQuizStemImage(f));
+      }
+      if (stemImageFiles.length > inputs.length) {
+        toast.info(
+          `${stemImageFiles.length - inputs.length} extra image file(s) were ignored (fewer questions than files).`,
+        );
+      }
+
+      const merged = inputs.map((row, i) => {
+        const fromPaste =
+          preview.mode === "structured" ? preview.structured.questions[i]?.stemImageUrl?.trim() : "";
+        const fromFile = uploadedUrls[i]?.trim() ?? "";
+        const u = (fromPaste || fromFile).trim();
+        return u ? { ...row, stemImageUrl: u } : row;
+      });
+
+      const bpLabels = labelsFromBlueprintSelection(importBlueprint);
+      const examForRows: NclexExamType | null =
+        adminExamType === "rn" || adminExamType === "pn" ? adminExamType : null;
+      const withBlueprint = merged.map((row) => ({
+        ...row,
+        ...(examForRows ? { examType: examForRows } : {}),
+        ...(bpLabels.nclexCategory?.trim() ? { nclexCategory: bpLabels.nclexCategory.trim() } : {}),
+        ...(bpLabels.nclexTopic?.trim() ? { nclexTopic: bpLabels.nclexTopic.trim() } : {}),
+        ...(bpLabels.nclexSubtopic?.trim() ? { nclexSubtopic: bpLabels.nclexSubtopic.trim() } : {}),
+      }));
+
+      const ids = await bulkImportQuestions(withBlueprint, profile.uid);
       const dup = preview.mode === "structured" ? preview.structured.duplicateBlocksRemoved ?? 0 : 0;
       toast.success(
         `Imported ${ids.length} unique question(s) into Firestore (category: ${category}).${dup ? ` (${dup} duplicate block(s) were skipped.)` : ""}`,
@@ -277,6 +342,7 @@ export default function BulkImport() {
         toast.info(preview.structured.warnings.slice(0, 5).join(" · "));
       }
       setText("");
+      setStemImageFiles([]);
       if (additiveMode && urlTemplateId) {
         // Return to the quiz preview so the admin sees the combined pool immediately.
         navigate(`/tutor/nclex/student-preview/${encodeURIComponent(urlTemplateId)}`);
@@ -347,37 +413,68 @@ export default function BulkImport() {
             ) : null}
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="rounded-md border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
+              <p className="text-sm font-medium text-slate-900">NCLEX blueprint tags (saved on each imported question)</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Uses your tutor dashboard exam track (RN/PN) when set. Category/topic/subtopic here are stored on every
+                row in this import so you can filter test banks and tutoring extracts later.
+              </p>
+              <div className="mt-3">
+                <NclexBlueprintSelects value={importBlueprint} onChange={setImportBlueprint} />
+              </div>
+            </div>
             <pre className="max-h-48 overflow-auto rounded-md border bg-white p-3 text-xs leading-relaxed text-gray-700 whitespace-pre-wrap">
               {additiveMode ? ADDITIVE_HELP : FORMAT_HELP}
             </pre>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-muted-foreground">
-                Import from Word: choose a <span className="font-medium">.docx</span> and we’ll extract it into the text box.
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Import from Word: choose a <span className="font-medium">.docx</span> and we’ll extract it into the text box
+                  (text only — use image files or <span className="font-mono text-xs">Image URL:</span> lines for figures).
+                </div>
+                <input
+                  type="file"
+                  accept=".docx"
+                  disabled={busy || docxBusy}
+                  onChange={(e) => {
+                    const f = e.currentTarget.files?.[0] ?? null;
+                    if (!f) return;
+                    setDocxBusy(true);
+                    void (async () => {
+                      try {
+                        const { extractRawText } = await import("mammoth/mammoth.browser");
+                        const arrayBuffer = await f.arrayBuffer();
+                        const res = await extractRawText({ arrayBuffer });
+                        setText(res.value ?? "");
+                        toast.success(`Loaded "${f.name}" into the import box.`);
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : "Could not read .docx");
+                      } finally {
+                        setDocxBusy(false);
+                        e.currentTarget.value = "";
+                      }
+                    })();
+                  }}
+                />
               </div>
-              <input
-                type="file"
-                accept=".docx"
-                disabled={busy || docxBusy}
-                onChange={(e) => {
-                  const f = e.currentTarget.files?.[0] ?? null;
-                  if (!f) return;
-                  setDocxBusy(true);
-                  void (async () => {
-                    try {
-                      const { extractRawText } = await import("mammoth/mammoth.browser");
-                      const arrayBuffer = await f.arrayBuffer();
-                      const res = await extractRawText({ arrayBuffer });
-                      setText(res.value ?? "");
-                      toast.success(`Loaded "${f.name}" into the import box.`);
-                    } catch (err) {
-                      toast.error(err instanceof Error ? err.message : "Could not read .docx");
-                    } finally {
-                      setDocxBusy(false);
-                      e.currentTarget.value = "";
-                    }
-                  })();
-                }}
-              />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-muted-foreground">
+                  Stem images (optional): select one or more PNG/JPG/WebP/GIF files — paired in <span className="font-medium">sorted file-name order</span>{" "}
+                  with Question 1, 2, …
+                </div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp"
+                  multiple
+                  disabled={busy || docxBusy}
+                  onChange={(e) => {
+                    const list = Array.from(e.currentTarget.files ?? []);
+                    list.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+                    setStemImageFiles(list);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </div>
             </div>
             <Textarea rows={18} value={text} onChange={(e) => setText(e.target.value)} className="font-mono text-sm" />
             <div className="rounded-md border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700">
@@ -408,6 +505,12 @@ export default function BulkImport() {
               ) : (
                 <>No valid blocks yet — paste content above.</>
               )}
+              {stemImageHint ? (
+                <p className="mt-2 text-xs text-slate-600">
+                  <span className="font-medium">Images: </span>
+                  {stemImageHint}
+                </p>
+              ) : null}
               {preview.mode === "structured" && shownWarnings.length > 0 ? (
                 <ul className="mt-2 list-disc pl-5 text-xs text-amber-800">
                   {shownWarnings.slice(0, 8).map((w, i) => (

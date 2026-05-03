@@ -24,6 +24,12 @@ import {
   searchQuestions,
   updateQuestion,
 } from "@/lib/firestore/nclex";
+import { uploadQuizStemImage } from "@/lib/firestore/quizStemImages";
+import {
+  extractFirstImageUrlFromText,
+  isPixabayCdnHotlinkBlocked,
+  normalizeHttpUrlForMedia,
+} from "@/lib/nclex/nclexQuestionMedia";
 import type { Question } from "@/lib/firestore/nclexTypes";
 import { toast } from "sonner";
 import { ArrowLeft, Pencil, Plus } from "lucide-react";
@@ -69,6 +75,8 @@ export default function QuestionManagement() {
   const [adminWhyOthers, setAdminWhyOthers] = useState("");
   const [category, setCategory] = useState("");
   const [topic, setTopic] = useState("");
+  const [stemImageUrl, setStemImageUrl] = useState("");
+  const [imageAttachBusy, setImageAttachBusy] = useState(false);
   const [sataCorrectLetters, setSataCorrectLetters] = useState("");
   const [allowMultipleToggle, setAllowMultipleToggle] = useState(false);
 
@@ -82,6 +90,7 @@ export default function QuestionManagement() {
   const [editWhyOthers, setEditWhyOthers] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editTopic, setEditTopic] = useState("");
+  const [editStemImageUrl, setEditStemImageUrl] = useState("");
   const [editSataCorrectLetters, setEditSataCorrectLetters] = useState("");
   const [editAllowMultipleToggle, setEditAllowMultipleToggle] = useState(false);
   const [editIsActive, setEditIsActive] = useState(true);
@@ -151,6 +160,7 @@ export default function QuestionManagement() {
         }
         setEditCategory(q.category ?? "");
         setEditTopic(q.topic ?? "");
+        setEditStemImageUrl(q.stemImageUrl ?? "");
         setEditSataCorrectLetters((q.correctAnswerIds ?? []).join(","));
         setEditAllowMultipleToggle(Boolean(q.allowMultipleAnswers));
         setEditIsActive(Boolean(q.isActive));
@@ -199,6 +209,7 @@ export default function QuestionManagement() {
       category: category.trim(),
       topic: topic.trim() || undefined,
       isActive: true,
+      ...(stemImageUrl.trim() ? { stemImageUrl: stemImageUrl.trim() } : {}),
       ...(isAdmin && adminWhyOthers.trim() ? { whyOthersIncorrect: adminWhyOthers.trim() } : {}),
     };
   };
@@ -216,6 +227,7 @@ export default function QuestionManagement() {
       await createQuestion(payload, profile.uid);
       toast.success("Question created");
       setQuestionText("");
+      setStemImageUrl("");
       setRationale("");
       setAdminWhyOthers("");
       setSataCorrectLetters("");
@@ -262,6 +274,7 @@ export default function QuestionManagement() {
     }
     setEditCategory(it.category ?? "");
     setEditTopic(it.topic ?? "");
+    setEditStemImageUrl(it.stemImageUrl ?? "");
     setEditAllowMultipleToggle(Boolean(it.allowMultipleAnswers));
     setEditSataCorrectLetters(ids.length >= 2 ? ids.join(", ") : "");
     setEditIsActive(it.isActive !== false);
@@ -292,6 +305,7 @@ export default function QuestionManagement() {
         category: editCategory.trim(),
         topic: editTopic.trim() || undefined,
         isActive: editIsActive,
+        stemImageUrl: editStemImageUrl.trim() || null,
         ...(isAdmin ? { whyOthersIncorrect: editWhyOthers.trim() || null } : {}),
       });
       toast.success("Question updated");
@@ -310,6 +324,7 @@ export default function QuestionManagement() {
     setTopic((it.topic || "").trim());
     setTitle("Practice item");
     setQuestionText("");
+    setStemImageUrl("");
     setRationale("");
     setSataCorrectLetters("");
     setAllowMultipleToggle(false);
@@ -364,6 +379,39 @@ export default function QuestionManagement() {
               <div className="grid gap-2">
                 <Label>Stem</Label>
                 <Textarea rows={4} value={questionText} onChange={(e) => setQuestionText(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Stem image (optional)</Label>
+                <p className="text-xs text-muted-foreground">
+                  Shown below the stem on student quizzes. Paste an HTTPS URL or upload a PNG/JPG/WebP/GIF.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    value={stemImageUrl}
+                    onChange={(e) => setStemImageUrl(e.target.value)}
+                    placeholder="https://…"
+                    className="min-w-[200px] flex-1 font-mono text-sm"
+                  />
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp"
+                    disabled={busy || imageAttachBusy}
+                    className="max-w-[220px] cursor-pointer text-sm file:mr-2"
+                    onChange={(e) => {
+                      const f = e.currentTarget.files?.[0] ?? null;
+                      e.currentTarget.value = "";
+                      if (!f) return;
+                      setImageAttachBusy(true);
+                      void uploadQuizStemImage(f)
+                        .then((url) => {
+                          setStemImageUrl(url);
+                          toast.success("Stem image uploaded.");
+                        })
+                        .catch((err) => toast.error(err instanceof Error ? err.message : "Upload failed"))
+                        .finally(() => setImageAttachBusy(false));
+                    }}
+                  />
+                </div>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 {options.map((opt, idx) => (
@@ -493,8 +541,33 @@ export default function QuestionManagement() {
               {displayedItems.map((it) => {
                 const ids = getCorrectAnswerIds(it);
                 const can = profile ? canEditOrDelete(it, profile.uid, isAdmin) : false;
+                const thumb =
+                  it.stemImageUrl?.trim() || extractFirstImageUrlFromText(it.questionText) || null;
+                const thumbNorm = thumb ? normalizeHttpUrlForMedia(thumb) : "";
+                const thumbPixabay = thumbNorm && isPixabayCdnHotlinkBlocked(thumbNorm);
                 return (
                   <li key={it.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
+                    {thumb ? (
+                      <div className="flex h-16 w-24 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/30 p-1 text-center sm:mt-0 sm:h-20 sm:w-32">
+                        {thumbPixabay ? (
+                          <a
+                            href={thumbNorm}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[10px] font-medium leading-tight text-blue-800 underline sm:text-xs"
+                          >
+                            Pixabay (blocked embed) — open
+                          </a>
+                        ) : (
+                          <img
+                            src={thumbNorm}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        )}
+                      </div>
+                    ) : null}
                     <div className="min-w-0 flex-1 space-y-1">
                       <p className="font-medium">{it.title}</p>
                       <p className="text-sm text-muted-foreground line-clamp-2">{it.questionText}</p>
@@ -554,6 +627,37 @@ export default function QuestionManagement() {
               <div className="grid gap-2">
                 <Label>Stem</Label>
                 <Textarea rows={4} value={editQuestionText} onChange={(e) => setEditQuestionText(e.target.value)} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Stem image (optional)</Label>
+                <p className="text-xs text-muted-foreground">Clear the URL and save to remove the image from this question.</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    value={editStemImageUrl}
+                    onChange={(e) => setEditStemImageUrl(e.target.value)}
+                    placeholder="https://…"
+                    className="min-w-[200px] flex-1 font-mono text-sm"
+                  />
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp,.png,.jpg,.jpeg,.gif,.webp"
+                    disabled={busy || imageAttachBusy}
+                    className="max-w-[220px] cursor-pointer text-sm file:mr-2"
+                    onChange={(e) => {
+                      const f = e.currentTarget.files?.[0] ?? null;
+                      e.currentTarget.value = "";
+                      if (!f) return;
+                      setImageAttachBusy(true);
+                      void uploadQuizStemImage(f)
+                        .then((url) => {
+                          setEditStemImageUrl(url);
+                          toast.success("Stem image uploaded.");
+                        })
+                        .catch((err) => toast.error(err instanceof Error ? err.message : "Upload failed"))
+                        .finally(() => setImageAttachBusy(false));
+                    }}
+                  />
+                </div>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 {editOptions.map((opt, idx) => (

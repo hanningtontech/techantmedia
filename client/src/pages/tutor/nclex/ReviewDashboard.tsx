@@ -7,6 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { ExplanationScoreDisplay } from "@/components/nclex/ExplanationScoreDisplay";
 import { ExplanationBlocks } from "@/components/nclex/ExplanationBlocks";
 import { KeywordVisualization } from "@/components/nclex/KeywordVisualization";
+import { NclexHotlinkImageNotice } from "@/components/nclex/NclexHotlinkImageNotice";
+import { NclexOptionRichText, NclexUrlRichText } from "@/components/nclex/NclexUrlRichText";
+import { isPixabayCdnHotlinkBlocked, normalizeHttpUrlForMedia } from "@/lib/nclex/nclexQuestionMedia";
 import { useFirebaseAuth, isTutorOrAdmin } from "@/contexts/FirebaseAuthContext";
 import { cn } from "@/lib/utils";
 import {
@@ -371,7 +374,26 @@ export default function ReviewDashboard() {
                     Edit question
                   </Button>
                 </div>
-                <CardDescription className="whitespace-pre-wrap">{q?.questionText}</CardDescription>
+                <CardDescription className="whitespace-pre-wrap">
+                  <NclexUrlRichText text={q?.questionText ?? ""} />
+                </CardDescription>
+                {q?.stemImageUrl?.trim() ? (
+                  <div className="mt-3 overflow-hidden rounded-md border bg-white">
+                    {(() => {
+                      const stemSrc = normalizeHttpUrlForMedia(q.stemImageUrl.trim());
+                      return isPixabayCdnHotlinkBlocked(stemSrc) ? (
+                        <NclexHotlinkImageNotice href={stemSrc} context="stem" className="border-0" />
+                      ) : (
+                        <img
+                          src={stemSrc}
+                          alt=""
+                          className="max-h-[min(360px,50vh)] w-full object-contain"
+                          loading="lazy"
+                        />
+                      );
+                    })()}
+                  </div>
+                ) : null}
               </CardHeader>
               <CardContent className="space-y-4">
                 {q?.options?.length ? (
@@ -395,7 +417,9 @@ export default function ReviewDashboard() {
                               )}
                             >
                               <span className="font-mono font-semibold tabular-nums text-gray-900">{id.toUpperCase()}.</span>
-                              <span className="min-w-0 flex-1 whitespace-pre-wrap text-gray-800">{opt.text}</span>
+                              <span className="min-w-0 flex-1 text-gray-800">
+                                <NclexOptionRichText text={opt.text} className="whitespace-pre-wrap" />
+                              </span>
                               <span className="flex shrink-0 flex-wrap gap-1">
                                 {picked ? (
                                   <span className="rounded border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-900">

@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { subscribeStudentNotifications } from "@/lib/firestore/nclex";
-import { Bell, BookText, ChevronDown, CircleHelp, Home, LogOut, Mail, MessageCircle, Presentation, User } from "lucide-react";
+import { STUDENT_NCLEX_DASHBOARD, STUDENT_NCLEX_HUB } from "@/lib/nclex/studentNclexRoutes";
+import { Bell, BookText, ChevronDown, CircleHelp, FileText, Home, LogOut, Mail, MessageCircle, Presentation, User } from "lucide-react";
 
 type Props = {
   title: string;
@@ -184,6 +185,17 @@ export function NclexHeader({ title, subtitle, homeHref = "/", homeLabel = "Port
                 className="h-8 gap-0.5 border-[var(--nclex-border)] bg-white/95 px-2 text-xs sm:h-9 sm:gap-1 sm:px-3 sm:text-sm"
                 asChild
               >
+                <Link href="/student/nclex/class-notes">
+                  <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">Class notes</span>
+                </Link>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-0.5 border-[var(--nclex-border)] bg-white/95 px-2 text-xs sm:h-9 sm:gap-1 sm:px-3 sm:text-sm"
+                asChild
+              >
                 <Link href="/student/nclex/presentations">
                   <Presentation className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span className="hidden sm:inline">Presentations</span>
@@ -253,7 +265,10 @@ export function NclexHeader({ title, subtitle, homeHref = "/", homeLabel = "Port
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/student/nclex">Student home</Link>
+                  <Link href={STUDENT_NCLEX_DASHBOARD}>Dashboard</Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href={STUDENT_NCLEX_HUB}>Change NCLEX track (RN / PN)</Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link href="/student/nclex/profile">Profile</Link>
@@ -264,7 +279,7 @@ export function NclexHeader({ title, subtitle, homeHref = "/", homeLabel = "Port
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-red-600 focus:text-red-600"
-                  onClick={() => void signOut().then(() => navigate("/student/nclex"))}
+                  onClick={() => void signOut().then(() => navigate("/"))}
                 >
                   <LogOut className="mr-2 h-4 w-4" />
                   Log out

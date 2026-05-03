@@ -7,6 +7,7 @@ import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { useRedirectStudentIfPending } from "@/hooks/useStudentNclexAccessGuard";
 import { getStudentQuizzes } from "@/lib/firestore/nclex";
 import type { QuizSession } from "@/lib/firestore/nclexTypes";
+import { STUDENT_NCLEX_DASHBOARD } from "@/lib/nclex/studentNclexRoutes";
 import { toast } from "sonner";
 import { ArrowLeft } from "lucide-react";
 
@@ -36,7 +37,7 @@ export default function StudentQuizHistory() {
     return (
       <div className="nclex-app nclex-shell px-4 py-16">
         <p className="text-sm text-slate-600">Sign in to view your attempts.</p>
-        <Button className="mt-4 nclex-btn-primary" onClick={() => navigate("/student/nclex")}>
+        <Button className="mt-4 nclex-btn-primary" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
           Student home
         </Button>
       </div>
@@ -46,7 +47,7 @@ export default function StudentQuizHistory() {
   return (
     <div className="nclex-app nclex-shell min-h-screen py-8 sm:py-10">
       <div className="nclex-main mx-auto max-w-2xl space-y-5 sm:space-y-6 xl:max-w-3xl">
-      <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate("/student/nclex")}>
+      <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
         <ArrowLeft className="h-4 w-4" />
         Back
       </Button>

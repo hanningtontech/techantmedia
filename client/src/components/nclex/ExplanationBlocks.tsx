@@ -1,3 +1,4 @@
+import { NclexUrlRichText } from "@/components/nclex/NclexUrlRichText";
 import { splitExplanationSections } from "@/lib/nclex/explanationSections";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +23,9 @@ export function ExplanationBlocks({ rationale, adminExtra, className, adminTone 
         {sections.map((s, idx) => (
           <div key={`${s.title}-${idx}`} className="space-y-1.5">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{s.title}</p>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900">{s.body}</p>
+            <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900">
+              <NclexUrlRichText text={s.body} />
+            </div>
           </div>
         ))}
 
@@ -31,9 +34,9 @@ export function ExplanationBlocks({ rationale, adminExtra, className, adminTone 
             <p className={cn("text-xs font-semibold uppercase tracking-wide", adminTone ? "text-violet-900" : "text-slate-600")}>
               Why the others are not correct
             </p>
-            <p className={cn("whitespace-pre-wrap text-sm leading-relaxed", adminTone ? "text-violet-950" : "text-slate-900")}>
-              {extra}
-            </p>
+            <div className={cn("whitespace-pre-wrap text-sm leading-relaxed", adminTone ? "text-violet-950" : "text-slate-900")}>
+              <NclexUrlRichText text={extra} />
+            </div>
           </div>
         ) : null}
       </div>

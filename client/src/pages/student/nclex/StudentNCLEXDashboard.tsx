@@ -23,7 +23,7 @@ import { formatAuthOrFirestoreError } from "@/lib/authErrorMessage";
 import {
   areQuizResultsReleasedToStudent,
   canViewInProgressSectionResults,
-  countQuizQuestionPool,
+  countQuestionsForQuizTemplate,
   hasPendingSectionScoreRequest,
   createQuizSession,
   createRatSessionFromHistory,
@@ -33,9 +33,59 @@ import {
   summarizeStudentProgress,
 } from "@/lib/firestore/nclex";
 import type { QuizSession, QuizTemplate, RatStats } from "@/lib/firestore/nclexTypes";
+import { STUDENT_NCLEX_HUB } from "@/lib/nclex/studentNclexRoutes";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BarChart3, BookOpen, Clock, Play } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { getPresentationById } from "@/lib/firestore/presentations";
+import { listTutoringSessionsForStudent, type TutoringSession } from "@/lib/firestore/tutoringSessions";
+import type { NursingTrack } from "@/lib/userTypes";
+import { BarChart3, BookOpen, Clock, GraduationCap, Play, Presentation } from "lucide-react";
+
+function TutoringSessionPresentationLinks({ ids }: { ids: string[] }) {
+  const [items, setItems] = useState<{ id: string; title: string }[]>([]);
+  useEffect(() => {
+    if (!ids.length) {
+      setItems([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const rows = await Promise.all(ids.map((id) => getPresentationById(id)));
+      if (cancelled) return;
+      setItems(
+        rows
+          .filter((x): x is NonNullable<typeof x> => Boolean(x?.published))
+          .map((x) => ({ id: x.id, title: x.title?.trim() || "Presentation" })),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ids.join("|")]);
+  if (!items.length) return null;
+  return (
+    <div className="rounded-md border border-violet-100 bg-violet-50/50 p-3">
+      <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-900">
+        <Presentation className="h-3.5 w-3.5" />
+        Session materials
+      </p>
+      <ul className="space-y-1.5 text-sm">
+        {items.map((p) => (
+          <li key={p.id}>
+            <Link
+              href={`/student/nclex/presentations/view/${encodeURIComponent(p.id)}`}
+              className="font-medium text-violet-800 underline decoration-violet-300 underline-offset-2 hover:text-violet-950"
+            >
+              {p.title}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 const DASH_CACHE = new Map<
   string,
@@ -70,6 +120,7 @@ export default function StudentNCLEXDashboard() {
   const [ratSize, setRatSize] = useState<5 | 10 | 15 | 20>(10);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [dashReady, setDashReady] = useState(false);
+  const [tutoringSessions, setTutoringSessions] = useState<TutoringSession[]>([]);
 
   useEffect(() => {
     if (!profile || !firebaseReady) {
@@ -93,7 +144,7 @@ export default function StudentNCLEXDashboard() {
       try {
         const [sess, tmpl, rs] = await Promise.all([
           getStudentQuizzes(profile.uid),
-          listAssignedQuizTemplates(profile.uid),
+          listAssignedQuizTemplates(profile.uid, profile.nursingTrack ?? null),
           getRatStats(profile.uid),
         ]);
         if (!cancelled) {
@@ -104,7 +155,9 @@ export default function StudentNCLEXDashboard() {
         }
         const pools = await Promise.all(
           tmpl.map(async (t) => {
-            const n = await countQuizQuestionPool(t.filterCategory, t.questionLimit > 0 ? t.questionLimit : null);
+            const n = await countQuestionsForQuizTemplate(t, {
+              studentTrack: profile.nursingTrack ?? null,
+            });
             return [t.id, n] as const;
           }),
         );
@@ -142,7 +195,7 @@ export default function StudentNCLEXDashboard() {
         try {
           const [sess, tmpl, rs] = await Promise.all([
             getStudentQuizzes(profile.uid),
-            listAssignedQuizTemplates(profile.uid),
+            listAssignedQuizTemplates(profile.uid, profile.nursingTrack ?? null),
             getRatStats(profile.uid),
           ]);
           setSessions(sess);
@@ -151,7 +204,9 @@ export default function StudentNCLEXDashboard() {
           setLoadErr(null);
           const pools = await Promise.all(
             tmpl.map(async (t) => {
-              const n = await countQuizQuestionPool(t.filterCategory, t.questionLimit > 0 ? t.questionLimit : null);
+              const n = await countQuestionsForQuizTemplate(t, {
+                studentTrack: profile.nursingTrack ?? null,
+              });
               return [t.id, n] as const;
             }),
           );
@@ -192,6 +247,7 @@ export default function StudentNCLEXDashboard() {
         studentId: profile.uid,
         studentName: profile.name ?? profile.email ?? "Student",
         questionCount: ratSize,
+        nursingTrack: profile.nursingTrack ?? null,
       });
       toast.success("Random assessment started.");
       navigate(`/student/nclex/rat/${id}`);
@@ -244,6 +300,463 @@ export default function StudentNCLEXDashboard() {
     return m;
   }, [sessions]);
 
+  useEffect(() => {
+    if (!profile?.uid || profile.role !== "student") return;
+    const track = profile.nursingTrack;
+    if (track !== "rn" && track !== "pn") return;
+    let cancelled = false;
+    void listTutoringSessionsForStudent(profile.uid, track as NursingTrack)
+      .then((rows) => {
+        if (!cancelled) setTutoringSessions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setTutoringSessions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile?.uid, profile?.role, profile?.nursingTrack]);
+
+  const tutoringTemplateIdSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const ts of tutoringSessions) for (const id of ts.templateIds) s.add(id);
+    return s;
+  }, [tutoringSessions]);
+
+  const selfDrivenTemplates = useMemo(
+    () => templates.filter((t) => !tutoringTemplateIdSet.has(t.id)),
+    [templates, tutoringTemplateIdSet],
+  );
+
+  const templatesForGrid = profile?.role === "student" ? selfDrivenTemplates : templates;
+
+  const progressRatGridEl = (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+        <Card className="nclex-card h-full overflow-hidden shadow-md">
+          <CardHeader className="border-b border-[var(--nclex-border)] bg-gradient-to-r from-white to-blue-50/80 pb-4">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg" style={{ color: "var(--nclex-primary)" }}>
+              <BarChart3 className="h-5 w-5 shrink-0" />
+              Your progress
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Based on quizzes your tutor has released to you</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-5 pt-5 sm:grid-cols-3 sm:gap-6">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide nclex-text-muted">Total quizzes</p>
+              <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl">{progress.totalQuizzes}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide nclex-text-muted">Average score</p>
+              <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl" style={{ color: "var(--nclex-success)" }}>
+                {progress.totalQuizzes ? `${progress.averageScore}%` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide nclex-text-muted">Last quiz</p>
+              <p className="mt-1 text-base font-semibold sm:text-lg">{progress.lastAttemptLabel}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
+        <Card className="nclex-card h-full overflow-hidden shadow-md">
+          <CardHeader className="border-b border-[var(--nclex-border)] bg-gradient-to-r from-white to-slate-50 pb-4">
+            <CardTitle className="text-base sm:text-lg" style={{ color: "var(--nclex-primary)" }}>
+              Random Assessment Test
+            </CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
+              Once every 24 hours. 1 minute per question. Score is shown immediately.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 pt-5 sm:grid-cols-3 sm:items-center">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide nclex-text-muted">RATs done</p>
+              <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl">{ratCount}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide nclex-text-muted">Mean score</p>
+              <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl" style={{ color: "var(--nclex-success)" }}>
+                {ratCount ? `${ratMean}%` : "—"}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-xs font-medium nclex-text-muted">Questions:</span>
+                {[5, 10, 15, 20].map((n) => (
+                  <Button
+                    key={n}
+                    type="button"
+                    size="sm"
+                    variant={ratSize === n ? "default" : "outline"}
+                    onClick={() => setRatSize(n as 5 | 10 | 15 | 20)}
+                    disabled={ratBusy}
+                  >
+                    {n}
+                  </Button>
+                ))}
+              </div>
+              {ratCount > 0 ? (
+                <div className="space-y-2">
+                  <Button className="nclex-btn-primary w-full" type="button" onClick={() => navigate("/student/nclex/rat-history")}>
+                    View history
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button className="w-full" variant="outline" disabled={ratBusy || !ratCooldown.canStart}>
+                        {ratCooldown.canStart ? "Start new RAT" : `Next RAT in ${formatCooldown(ratCooldown.remainingMs)}`}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Start random assessment?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          You’ll have <span className="font-semibold">{ratSize} minutes</span> total ({ratSize} questions × 1 minute).
+                          No rationales will be shown. After you submit, you’ll see your score immediately.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel disabled={ratBusy}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => void startRat()} disabled={ratBusy}>
+                          Start
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              ) : (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button className="nclex-btn-primary w-full" disabled={ratBusy || !ratCooldown.canStart}>
+                      {ratCooldown.canStart ? "Generate random test" : `Available in ${formatCooldown(ratCooldown.remainingMs)}`}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Start random assessment?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        You’ll have <span className="font-semibold">{ratSize} minutes</span> total ({ratSize} questions × 1 minute).
+                        No rationales will be shown. After you submit, you’ll see your score immediately.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={ratBusy}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => void startRat()} disabled={ratBusy}>
+                        Start
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    </div>
+  );
+
+  const nclexQuizGridSection =
+    dashReady && templatesForGrid.length > 0 ? (
+      <section>
+        <h2 className="mb-2 text-base font-bold sm:text-lg">Your quizzes</h2>
+        <p className="mb-4 text-pretty text-sm leading-relaxed nclex-text-muted sm:text-base">
+          Quizzes assigned to you by your tutor. Completed quizzes show as done; you can redo to create a new attempt (history is
+          kept).
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
+          {templatesForGrid.map((t) => {
+            const pool = templatePools[t.id] ?? 0;
+            const minutes =
+              t.estimatedMinutes != null && t.estimatedMinutes > 0
+                ? t.estimatedMinutes
+                : Math.max(1, Math.ceil(pool * 1.2));
+            const templateSessions = sessionsByTemplate.get(t.id) ?? [];
+            const inProgress = templateSessions.find((s) => s.status === "in_progress") ?? null;
+            const latest = templateSessions[0] ?? null;
+            const latestAttemptAt = latest ? tsMillis(latest.submittedAt ?? latest.startedAt) : 0;
+            const templateUpdatedAt = tsMillis(t.updatedAt);
+            const templateLim = Number(t.questionLimit ?? 0);
+            const latestLim = Number(latest?.questionLimit ?? 0);
+            const limDelta = templateLim > 0 && latestLim > 0 ? Math.max(0, templateLim - latestLim) : 0;
+            const isUpdated = Boolean(latest && ((templateUpdatedAt > 0 && templateUpdatedAt > latestAttemptAt) || limDelta > 0));
+
+            const done = Boolean(
+              latest && (latest.status === "submitted" || latest.status === "reviewed") && areQuizResultsReleasedToStudent(latest),
+            );
+            const releasedAttempts = templateSessions.filter(
+              (s) =>
+                (s.status === "submitted" || s.status === "reviewed") &&
+                areQuizResultsReleasedToStudent(s) &&
+                (s.totalQuestions ?? 0) > 0,
+            );
+            const firstReleased =
+              [...releasedAttempts].sort((a, b) => tsMillis(a.startedAt ?? a.submittedAt) - tsMillis(b.startedAt ?? b.submittedAt))[0] ??
+              null;
+            const secondReleased =
+              [...releasedAttempts].sort((a, b) => tsMillis(a.startedAt ?? a.submittedAt) - tsMillis(b.startedAt ?? b.submittedAt))[1] ??
+              null;
+
+            const scorePct = firstReleased ? Math.round(Number(firstReleased.percentageScore) || 0) : null;
+            const outcome = firstReleased?.adminOutcome ?? null;
+            const outcomeNote = (firstReleased?.adminOutcomeNote ?? "").trim();
+            const outcomeStyle =
+              outcome === "fail"
+                ? "border border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+                : outcome === "borderline"
+                  ? "border border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100"
+                  : outcome === "pass"
+                    ? "border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50";
+            return (
+              <motion.div key={t.id} whileHover={{ scale: 1.01 }} transition={{ duration: 0.2 }}>
+                <Card className="nclex-card nclex-card-interactive h-full">
+                  <CardHeader className="space-y-1 pb-3 sm:pb-4">
+                    <CardTitle className="flex flex-wrap items-center gap-2 text-balance text-base leading-snug sm:text-lg">
+                      <span className="min-w-0">{t.title}</span>
+                      {isUpdated ? (
+                        <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-900">
+                          Updated{limDelta > 0 ? ` · +${limDelta}` : ""}
+                        </span>
+                      ) : null}
+                    </CardTitle>
+                    <CardDescription className="text-xs leading-relaxed sm:text-sm">
+                      {t.description ? <span className="mb-2 block text-gray-600">{t.description}</span> : null}
+                      <span className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 shrink-0" />
+                        {pool} questions · ~{minutes} min
+                      </span>
+                      {scorePct != null ? (
+                        <span className="mt-2 flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center rounded-md border bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-900">
+                            {scorePct}%
+                          </span>
+                          {outcome ? (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <button
+                                  type="button"
+                                  className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${outcomeStyle}`}
+                                >
+                                  {outcome.toUpperCase()}
+                                </button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>{outcome.toUpperCase()}</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    {outcomeNote ? outcomeNote : "No note was added for this outcome."}
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Close</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => {
+                                      if (firstReleased) navigate(`/student/nclex/results/${firstReleased.id}`);
+                                    }}
+                                  >
+                                    View results
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          ) : null}
+                        </span>
+                      ) : done ? (
+                        <span className="mt-2 block text-xs font-medium text-emerald-700">Done (score released)</span>
+                      ) : inProgress ? (
+                        <span className="mt-2 block text-xs font-medium text-amber-800">In progress</span>
+                      ) : null}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    {inProgress ? (
+                      <>
+                        <Button
+                          className="nclex-btn-primary w-full"
+                          disabled={starting || pool === 0}
+                          onClick={() => navigate(`/student/nclex/quiz/${inProgress.id}`)}
+                        >
+                          <Play className="mr-2 h-4 w-4" />
+                          Continue
+                        </Button>
+                        {canViewInProgressSectionResults(inProgress) ? (
+                          <Button
+                            className="mt-2 w-full"
+                            variant="outline"
+                            disabled={starting}
+                            onClick={() => navigate(`/student/nclex/results/${inProgress.id}`)}
+                          >
+                            View section results
+                          </Button>
+                        ) : hasPendingSectionScoreRequest(inProgress) ? (
+                          <Button
+                            className="mt-2 w-full"
+                            variant="outline"
+                            disabled={starting}
+                            onClick={() => navigate(`/student/nclex/results/${inProgress.id}`)}
+                          >
+                            Section results pending — open status page
+                          </Button>
+                        ) : null}
+                      </>
+                    ) : (
+                      <Button
+                        className="nclex-btn-primary w-full"
+                        disabled={starting || pool === 0 || releasedAttempts.length >= 2}
+                        onClick={() => void startFromTemplate(t)}
+                      >
+                        <Play className="mr-2 h-4 w-4" />
+                        {releasedAttempts.length >= 2
+                          ? "Max attempts reached"
+                          : isUpdated
+                            ? "Attempt additional questions"
+                            : done
+                              ? "Redo quiz"
+                              : "Start quiz"}
+                      </Button>
+                    )}
+                    {firstReleased ? (
+                      <Button
+                        className="mt-2 w-full"
+                        variant="outline"
+                        onClick={() => navigate(`/student/nclex/results/${firstReleased.id}`)}
+                      >
+                        View first score
+                      </Button>
+                    ) : null}
+                    {secondReleased ? (
+                      <Button
+                        className="mt-2 w-full"
+                        variant="outline"
+                        onClick={() => navigate(`/student/nclex/results/${secondReleased.id}`)}
+                      >
+                        View reattempt score
+                      </Button>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </div>
+      </section>
+    ) : null;
+
+  const nclexPreviousAttemptsSection = dashReady ? (
+    <section>
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-base font-bold sm:text-lg">Previous attempts</h2>
+        <Button asChild variant="outline" size="sm" className="shrink-0">
+          <Link href="/student/nclex/history">Full history</Link>
+        </Button>
+      </div>
+      <Card className="nclex-card overflow-hidden shadow-md">
+        <div className="space-y-2 p-3 sm:hidden">
+          {sessions.filter((s) => s.status === "submitted" || s.status === "reviewed").length === 0 ? (
+            <p className="py-6 text-center text-sm nclex-text-muted">No submitted attempts yet.</p>
+          ) : (
+            sessions
+              .filter((s) => s.status === "submitted" || s.status === "reviewed")
+              .slice(0, 8)
+              .map((s) => (
+                <div key={s.id} className="rounded-lg border border-[var(--nclex-border)] bg-white/80 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-900">{s.quizTitle ?? "Quiz"}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {s.totalQuestions && areQuizResultsReleasedToStudent(s)
+                          ? `Score: ${s.percentageScore}%`
+                          : s.totalQuestions
+                            ? "Score: Pending release"
+                            : "Score: —"}
+                      </div>
+                    </div>
+                    <span
+                      className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                      style={{
+                        backgroundColor: areQuizResultsReleasedToStudent(s)
+                          ? s.status === "reviewed"
+                            ? "rgba(16,185,129,0.12)"
+                            : "rgba(16,185,129,0.1)"
+                          : "rgba(245,158,11,0.15)",
+                        color: areQuizResultsReleasedToStudent(s) ? "var(--nclex-success)" : "var(--nclex-warning)",
+                      }}
+                    >
+                      {!areQuizResultsReleasedToStudent(s)
+                        ? "Awaiting tutor"
+                        : s.status === "reviewed"
+                          ? "Reviewed"
+                          : "Released"}
+                    </span>
+                  </div>
+                  <Button asChild variant="outline" size="sm" className="mt-3 w-full">
+                    <Link href={`/student/nclex/results/${s.id}`}>Review</Link>
+                  </Button>
+                </div>
+              ))
+          )}
+        </div>
+
+        <div className="hidden overflow-x-auto rounded-[var(--nclex-radius-card)] sm:block">
+          <table className="w-full min-w-[520px] text-left text-xs sm:text-sm">
+            <thead className="border-b border-[var(--nclex-border)] bg-white">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Quiz</th>
+                <th className="px-4 py-3 font-semibold">Score</th>
+                <th className="px-4 py-3 font-semibold">Status</th>
+                <th className="px-4 py-3 font-semibold">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sessions
+                .filter((s) => s.status === "submitted" || s.status === "reviewed")
+                .slice(0, 8)
+                .map((s) => (
+                  <tr key={s.id} className="border-b border-[var(--nclex-border)] bg-white/80">
+                    <td className="px-4 py-3">{s.quizTitle ?? "Quiz"}</td>
+                    <td className="px-4 py-3 tabular-nums font-medium">
+                      {s.totalQuestions && areQuizResultsReleasedToStudent(s)
+                        ? `${s.percentageScore}%`
+                        : s.totalQuestions
+                          ? "Pending release"
+                          : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className="rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{
+                          backgroundColor: areQuizResultsReleasedToStudent(s)
+                            ? s.status === "reviewed"
+                              ? "rgba(16,185,129,0.12)"
+                              : "rgba(16,185,129,0.1)"
+                            : "rgba(245,158,11,0.15)",
+                          color: areQuizResultsReleasedToStudent(s) ? "var(--nclex-success)" : "var(--nclex-warning)",
+                        }}
+                      >
+                        {!areQuizResultsReleasedToStudent(s)
+                          ? "Awaiting tutor"
+                          : s.status === "reviewed"
+                            ? "Reviewed"
+                            : "Released"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button asChild variant="link" className="h-auto p-0 text-[var(--nclex-primary)]">
+                        <Link href={`/student/nclex/results/${s.id}`}>Review</Link>
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+          {sessions.filter((s) => s.status === "submitted" || s.status === "reviewed").length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm nclex-text-muted">No submitted attempts yet.</p>
+          ) : null}
+        </div>
+      </Card>
+    </section>
+  ) : null;
+
   if (!firebaseReady) {
     return (
       <div className="nclex-app nclex-shell">
@@ -263,7 +776,13 @@ export default function StudentNCLEXDashboard() {
     <div className="nclex-app nclex-shell min-h-screen">
       <NclexHeader
         title="NCLEX Practice Platform"
-        subtitle={profile ? "Your learning dashboard" : "Sign in to continue"}
+        subtitle={
+          profile
+            ? profile.nursingTrack === "rn" || profile.nursingTrack === "pn"
+              ? `Your learning dashboard · ${profile.nursingTrack === "rn" ? "NCLEX-RN" : "NCLEX-PN"}`
+              : "Your learning dashboard"
+            : "Sign in to continue"
+        }
         homeHref="/"
         homeLabel="Portfolio"
       />
@@ -281,6 +800,13 @@ export default function StudentNCLEXDashboard() {
             <p className="mt-1 text-pretty text-sm leading-relaxed nclex-text-muted sm:text-base">
               Practice questions, explanations, and progress in one place.
             </p>
+            {profile?.role === "student" ? (
+              <p className="mt-2 text-xs text-slate-600">
+                <Link href={STUDENT_NCLEX_HUB} className="font-medium text-blue-600 underline hover:text-blue-700">
+                  Choose or switch NCLEX track (RN / PN)
+                </Link>
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -312,444 +838,107 @@ export default function StudentNCLEXDashboard() {
               </div>
             ) : null}
 
-            {dashReady ? (
-              <div className="grid gap-4 lg:grid-cols-2">
-                <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-                  <Card className="nclex-card h-full overflow-hidden shadow-md">
-                    <CardHeader className="border-b border-[var(--nclex-border)] bg-gradient-to-r from-white to-blue-50/80 pb-4">
-                      <CardTitle className="flex items-center gap-2 text-base sm:text-lg" style={{ color: "var(--nclex-primary)" }}>
-                        <BarChart3 className="h-5 w-5 shrink-0" />
-                        Your progress
-                      </CardTitle>
-                      <CardDescription className="text-xs sm:text-sm">Based on quizzes your tutor has released to you</CardDescription>
-                    </CardHeader>
-                    <CardContent className="grid gap-5 pt-5 sm:grid-cols-3 sm:gap-6">
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wide nclex-text-muted">Total quizzes</p>
-                        <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl">{progress.totalQuizzes}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wide nclex-text-muted">Average score</p>
-                        <p
-                          className="mt-1 text-xl font-bold tabular-nums sm:text-2xl"
-                          style={{ color: "var(--nclex-success)" }}
-                        >
-                          {progress.totalQuizzes ? `${progress.averageScore}%` : "—"}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium uppercase tracking-wide nclex-text-muted">Last quiz</p>
-                        <p className="mt-1 text-base font-semibold sm:text-lg">{progress.lastAttemptLabel}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-
-                <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-                  <Card className="nclex-card h-full overflow-hidden shadow-md">
-                  <CardHeader className="border-b border-[var(--nclex-border)] bg-gradient-to-r from-white to-slate-50 pb-4">
-                    <CardTitle className="text-base sm:text-lg" style={{ color: "var(--nclex-primary)" }}>
-                      Random Assessment Test
-                    </CardTitle>
-                    <CardDescription className="text-xs sm:text-sm">
-                      Once every 24 hours. 1 minute per question. Score is shown immediately.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="grid gap-4 pt-5 sm:grid-cols-3 sm:items-center">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide nclex-text-muted">RATs done</p>
-                      <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl">{ratCount}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide nclex-text-muted">Mean score</p>
-                      <p className="mt-1 text-xl font-bold tabular-nums sm:text-2xl" style={{ color: "var(--nclex-success)" }}>
-                        {ratCount ? `${ratMean}%` : "—"}
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2 text-sm">
-                        <span className="text-xs font-medium nclex-text-muted">Questions:</span>
-                        {[5, 10, 15, 20].map((n) => (
-                          <Button
-                            key={n}
-                            type="button"
-                            size="sm"
-                            variant={ratSize === n ? "default" : "outline"}
-                            onClick={() => setRatSize(n as 5 | 10 | 15 | 20)}
-                            disabled={ratBusy}
-                          >
-                            {n}
-                          </Button>
-                        ))}
-                      </div>
-                      {ratCount > 0 ? (
-                        <div className="space-y-2">
-                          <Button className="nclex-btn-primary w-full" type="button" onClick={() => navigate("/student/nclex/rat-history")}>
-                            View history
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button className="w-full" variant="outline" disabled={ratBusy || !ratCooldown.canStart}>
-                                {ratCooldown.canStart ? "Start new RAT" : `Next RAT in ${formatCooldown(ratCooldown.remainingMs)}`}
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Start random assessment?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  You’ll have <span className="font-semibold">{ratSize} minutes</span> total ({ratSize} questions × 1 minute).
-                                  No rationales will be shown. After you submit, you’ll see your score immediately.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel disabled={ratBusy}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => void startRat()} disabled={ratBusy}>
-                                  Start
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      ) : (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button className="nclex-btn-primary w-full" disabled={ratBusy || !ratCooldown.canStart}>
-                              {ratCooldown.canStart ? "Generate random test" : `Available in ${formatCooldown(ratCooldown.remainingMs)}`}
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Start random assessment?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                You’ll have <span className="font-semibold">{ratSize} minutes</span> total ({ratSize} questions × 1 minute).
-                                No rationales will be shown. After you submit, you’ll see your score immediately.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel disabled={ratBusy}>Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => void startRat()} disabled={ratBusy}>
-                                Start
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-                </motion.div>
-              </div>
-            ) : null}
-
-            {dashReady && templates.length > 0 ? (
-              <section>
-                <h2 className="mb-2 text-base font-bold sm:text-lg">Your quizzes</h2>
-                <p className="mb-4 text-pretty text-sm leading-relaxed nclex-text-muted sm:text-base">
-                  Quizzes assigned to you by your tutor. Completed quizzes show as done; you can redo to create a new attempt (history is kept).
-                </p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
-                  {templates.map((t) => {
-                    const pool = templatePools[t.id] ?? 0;
-                    const minutes =
-                      t.estimatedMinutes != null && t.estimatedMinutes > 0
-                        ? t.estimatedMinutes
-                        : Math.max(1, Math.ceil(pool * 1.2));
-                    const templateSessions = sessionsByTemplate.get(t.id) ?? [];
-                    const inProgress = templateSessions.find((s) => s.status === "in_progress") ?? null;
-                    const latest = templateSessions[0] ?? null;
-                    const latestAttemptAt = latest ? tsMillis(latest.submittedAt ?? latest.startedAt) : 0;
-                    const templateUpdatedAt = tsMillis(t.updatedAt);
-                    const templateLim = Number(t.questionLimit ?? 0);
-                    const latestLim = Number(latest?.questionLimit ?? 0);
-                    const limDelta = templateLim > 0 && latestLim > 0 ? Math.max(0, templateLim - latestLim) : 0;
-                    const isUpdated = Boolean(latest && ((templateUpdatedAt > 0 && templateUpdatedAt > latestAttemptAt) || limDelta > 0));
-
-                    const done = Boolean(
-                      latest && (latest.status === "submitted" || latest.status === "reviewed") && areQuizResultsReleasedToStudent(latest),
-                    );
-                    const releasedAttempts = templateSessions.filter(
-                      (s) =>
-                        (s.status === "submitted" || s.status === "reviewed") &&
-                        areQuizResultsReleasedToStudent(s) &&
-                        (s.totalQuestions ?? 0) > 0,
-                    );
-                    const firstReleased =
-                      [...releasedAttempts].sort((a, b) => tsMillis(a.startedAt ?? a.submittedAt) - tsMillis(b.startedAt ?? b.submittedAt))[0] ??
-                      null;
-                    const secondReleased =
-                      [...releasedAttempts].sort((a, b) => tsMillis(a.startedAt ?? a.submittedAt) - tsMillis(b.startedAt ?? b.submittedAt))[1] ??
-                      null;
-
-                    const scorePct = firstReleased ? Math.round(Number(firstReleased.percentageScore) || 0) : null;
-                    const outcome = firstReleased?.adminOutcome ?? null;
-                    const outcomeNote = (firstReleased?.adminOutcomeNote ?? "").trim();
-                    const outcomeStyle =
-                      outcome === "fail"
-                        ? "border border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
-                        : outcome === "borderline"
-                          ? "border border-slate-200 bg-slate-50 text-slate-800 hover:bg-slate-100"
-                          : outcome === "pass"
-                            ? "border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
-                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50";
-                    return (
-                      <motion.div key={t.id} whileHover={{ scale: 1.01 }} transition={{ duration: 0.2 }}>
-                        <Card className="nclex-card nclex-card-interactive h-full">
-                          <CardHeader className="space-y-1 pb-3 sm:pb-4">
-                            <CardTitle className="flex flex-wrap items-center gap-2 text-balance text-base leading-snug sm:text-lg">
-                              <span className="min-w-0">{t.title}</span>
-                              {isUpdated ? (
-                                <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-900">
-                                  Updated{limDelta > 0 ? ` · +${limDelta}` : ""}
-                                </span>
-                              ) : null}
-                            </CardTitle>
-                            <CardDescription className="text-xs leading-relaxed sm:text-sm">
-                              {t.description ? <span className="mb-2 block text-gray-600">{t.description}</span> : null}
-                              <span className="flex items-center gap-2">
-                                <Clock className="h-4 w-4 shrink-0" />
-                                {pool} questions · ~{minutes} min
+            {dashReady && profile?.role === "student" ? (
+              <Tabs defaultValue="tutoring" className="w-full">
+                <TabsList className="mb-4 grid h-auto w-full max-w-xl grid-cols-2 gap-1">
+                  <TabsTrigger value="tutoring" className="gap-1 text-xs sm:text-sm">
+                    <GraduationCap className="h-4 w-4 shrink-0" />
+                    Tutoring sessions
+                  </TabsTrigger>
+                  <TabsTrigger value="self" className="text-xs sm:text-sm">
+                    Self-driven practice
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="tutoring" className="mt-0 space-y-4">
+                  <p className="text-pretty text-sm text-slate-600">
+                    <Badge variant="secondary" className="mr-2 align-middle">
+                      Instructor-led
+                    </Badge>
+                    Sessions your instructor publishes appear here with the quizzes they attached. The same quizzes are assigned
+                    to your account automatically when a session is published.
+                  </p>
+                  {tutoringSessions.length === 0 ? (
+                    <Card className="nclex-card p-6 text-sm text-muted-foreground">
+                      No active tutoring sessions yet. When your instructor publishes one for your cohort, it will show up
+                      here.
+                    </Card>
+                  ) : (
+                    tutoringSessions.map((ts) => (
+                      <Card key={ts.id} className="nclex-card border-violet-200/80 shadow-md">
+                        <CardHeader className="pb-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge className="bg-violet-600 hover:bg-violet-600">Instructor-led</Badge>
+                            {ts.nclexTopic || ts.nclexCategory ? (
+                              <span className="text-xs text-muted-foreground">
+                                {[ts.nclexCategory, ts.nclexTopic, ts.nclexSubtopic].filter(Boolean).join(" → ")}
                               </span>
-                              {scorePct != null ? (
-                                <span className="mt-2 flex flex-wrap items-center gap-2">
-                                  <span className="inline-flex items-center rounded-md border bg-white px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-900">
-                                    {scorePct}%
-                                  </span>
-                                  {outcome ? (
-                                    <AlertDialog>
-                                      <AlertDialogTrigger asChild>
-                                        <button
-                                          type="button"
-                                          className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${outcomeStyle}`}
-                                        >
-                                          {outcome.toUpperCase()}
-                                        </button>
-                                      </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                          <AlertDialogTitle>{outcome.toUpperCase()}</AlertDialogTitle>
-                                          <AlertDialogDescription>
-                                            {outcomeNote ? outcomeNote : "No note was added for this outcome."}
-                                          </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                          <AlertDialogCancel>Close</AlertDialogCancel>
-                                          <AlertDialogAction
-                                            onClick={() => {
-                                              if (firstReleased) navigate(`/student/nclex/results/${firstReleased.id}`);
-                                            }}
-                                          >
-                                            View results
-                                          </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                    </AlertDialog>
-                                  ) : null}
-                                </span>
-                              ) : done ? (
-                                <span className="mt-2 block text-xs font-medium text-emerald-700">Done (score released)</span>
-                              ) : inProgress ? (
-                                <span className="mt-2 block text-xs font-medium text-amber-800">In progress</span>
-                              ) : null}
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent className="pt-0">
-                            {inProgress ? (
-                              <>
-                                <Button
-                                  className="nclex-btn-primary w-full"
-                                  disabled={starting || pool === 0}
-                                  onClick={() => navigate(`/student/nclex/quiz/${inProgress.id}`)}
+                            ) : null}
+                          </div>
+                          <CardTitle className="text-lg">
+                            <Link className="hover:underline" href={`/student/nclex/tutoring/${ts.id}`}>
+                              {ts.title}
+                            </Link>
+                          </CardTitle>
+                          {ts.description ? <CardDescription>{ts.description}</CardDescription> : null}
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          {ts.presentationIds?.length ? <TutoringSessionPresentationLinks ids={ts.presentationIds} /> : null}
+                          {templates
+                            .filter((t) => ts.templateIds.includes(t.id))
+                            .map((t) => {
+                              const pool = templatePools[t.id] ?? 0;
+                              return (
+                                <div
+                                  key={t.id}
+                                  className="flex flex-col gap-2 rounded-md border border-slate-100 bg-white/80 p-3 sm:flex-row sm:items-center sm:justify-between"
                                 >
-                                  <Play className="mr-2 h-4 w-4" />
-                                  Continue
-                                </Button>
-                                {canViewInProgressSectionResults(inProgress) ? (
+                                  <div>
+                                    <p className="font-medium text-slate-900">{t.title}</p>
+                                    <p className="text-xs text-muted-foreground">{pool} questions in pool</p>
+                                  </div>
                                   <Button
-                                    className="mt-2 w-full"
-                                    variant="outline"
-                                    disabled={starting}
-                                    onClick={() => navigate(`/student/nclex/results/${inProgress.id}`)}
+                                    size="sm"
+                                    className="nclex-btn-primary shrink-0"
+                                    disabled={starting || pool === 0}
+                                    onClick={() => void startFromTemplate(t)}
                                   >
-                                    View section results
+                                    <Play className="mr-1 h-4 w-4" />
+                                    Open quiz
                                   </Button>
-                                ) : hasPendingSectionScoreRequest(inProgress) ? (
-                                  <Button
-                                    className="mt-2 w-full"
-                                    variant="outline"
-                                    disabled={starting}
-                                    onClick={() => navigate(`/student/nclex/results/${inProgress.id}`)}
-                                  >
-                                    Section results pending — open status page
-                                  </Button>
-                                ) : null}
-                              </>
-                            ) : (
-                              <Button
-                                className="nclex-btn-primary w-full"
-                                disabled={starting || pool === 0 || releasedAttempts.length >= 2}
-                                onClick={() => void startFromTemplate(t)}
-                              >
-                                <Play className="mr-2 h-4 w-4" />
-                                {releasedAttempts.length >= 2
-                                  ? "Max attempts reached"
-                                  : isUpdated
-                                    ? "Attempt additional questions"
-                                    : done
-                                      ? "Redo quiz"
-                                      : "Start quiz"}
-                              </Button>
-                            )}
-                            {firstReleased ? (
-                              <Button
-                                className="mt-2 w-full"
-                                variant="outline"
-                                onClick={() => navigate(`/student/nclex/results/${firstReleased.id}`)}
-                              >
-                                View first score
-                              </Button>
-                            ) : null}
-                            {secondReleased ? (
-                              <Button
-                                className="mt-2 w-full"
-                                variant="outline"
-                                onClick={() => navigate(`/student/nclex/results/${secondReleased.id}`)}
-                              >
-                                View reattempt score
-                              </Button>
-                            ) : null}
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </section>
-            ) : null}
+                                </div>
+                              );
+                            })}
+                          {templates.filter((t) => ts.templateIds.includes(t.id)).length === 0 ? (
+                            <p className="text-sm text-amber-900">
+                              These quizzes are not on your assignment list yet—ask your instructor to publish the session or
+                              confirm your roster.
+                            </p>
+                          ) : null}
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </TabsContent>
+                <TabsContent value="self" className="mt-0 space-y-6">
+                  <p className="text-pretty text-sm text-slate-600">
+                    Self-driven practice includes your progress, random assessments, assigned quizzes that are not tied to an
+                    active instructor session, and your recent attempts.
+                  </p>
+                  {progressRatGridEl}
+                  {nclexQuizGridSection}
+                  {nclexPreviousAttemptsSection}
+                </TabsContent>
+              </Tabs>
+            ) : (
+              <>
+                {dashReady ? progressRatGridEl : null}
+                {nclexQuizGridSection}
+                {nclexPreviousAttemptsSection}
+              </>
+            )}
 
             {/* Practice-by-topic is intentionally not shown: students should only access quizzes wired to them. */}
 
-            {dashReady ? (
-            <section>
-              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-base font-bold sm:text-lg">Previous attempts</h2>
-                <Button asChild variant="outline" size="sm" className="shrink-0">
-                  <Link href="/student/nclex/history">Full history</Link>
-                </Button>
-              </div>
-              <Card className="nclex-card overflow-hidden shadow-md">
-                {/* Mobile: stacked cards (no horizontal scroll). Desktop: table. */}
-                <div className="space-y-2 p-3 sm:hidden">
-                  {sessions.filter((s) => s.status === "submitted" || s.status === "reviewed").length === 0 ? (
-                    <p className="py-6 text-center text-sm nclex-text-muted">No submitted attempts yet.</p>
-                  ) : (
-                    sessions
-                      .filter((s) => s.status === "submitted" || s.status === "reviewed")
-                      .slice(0, 8)
-                      .map((s) => (
-                        <div
-                          key={s.id}
-                          className="rounded-lg border border-[var(--nclex-border)] bg-white/80 p-3"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-semibold text-slate-900">{s.quizTitle ?? "Quiz"}</div>
-                              <div className="mt-1 text-xs text-muted-foreground">
-                                {s.totalQuestions && areQuizResultsReleasedToStudent(s)
-                                  ? `Score: ${s.percentageScore}%`
-                                  : s.totalQuestions
-                                    ? "Score: Pending release"
-                                    : "Score: —"}
-                              </div>
-                            </div>
-                            <span
-                              className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                              style={{
-                                backgroundColor: areQuizResultsReleasedToStudent(s)
-                                  ? s.status === "reviewed"
-                                    ? "rgba(16,185,129,0.12)"
-                                    : "rgba(16,185,129,0.1)"
-                                  : "rgba(245,158,11,0.15)",
-                                color: areQuizResultsReleasedToStudent(s)
-                                  ? "var(--nclex-success)"
-                                  : "var(--nclex-warning)",
-                              }}
-                            >
-                              {!areQuizResultsReleasedToStudent(s)
-                                ? "Awaiting tutor"
-                                : s.status === "reviewed"
-                                  ? "Reviewed"
-                                  : "Released"}
-                            </span>
-                          </div>
-                          <Button asChild variant="outline" size="sm" className="mt-3 w-full">
-                            <Link href={`/student/nclex/results/${s.id}`}>Review</Link>
-                          </Button>
-                        </div>
-                      ))
-                  )}
-                </div>
-
-                <div className="hidden overflow-x-auto rounded-[var(--nclex-radius-card)] sm:block">
-                  <table className="w-full min-w-[520px] text-left text-xs sm:text-sm">
-                    <thead className="border-b border-[var(--nclex-border)] bg-white">
-                      <tr>
-                        <th className="px-4 py-3 font-semibold">Quiz</th>
-                        <th className="px-4 py-3 font-semibold">Score</th>
-                        <th className="px-4 py-3 font-semibold">Status</th>
-                        <th className="px-4 py-3 font-semibold">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sessions
-                        .filter((s) => s.status === "submitted" || s.status === "reviewed")
-                        .slice(0, 8)
-                        .map((s) => (
-                          <tr key={s.id} className="border-b border-[var(--nclex-border)] bg-white/80">
-                            <td className="px-4 py-3">{s.quizTitle ?? "Quiz"}</td>
-                            <td className="px-4 py-3 tabular-nums font-medium">
-                              {s.totalQuestions && areQuizResultsReleasedToStudent(s)
-                                ? `${s.percentageScore}%`
-                                : s.totalQuestions
-                                  ? "Pending release"
-                                  : "—"}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span
-                                className="rounded-full px-2 py-0.5 text-xs font-medium"
-                                style={{
-                                  backgroundColor: areQuizResultsReleasedToStudent(s)
-                                    ? s.status === "reviewed"
-                                      ? "rgba(16,185,129,0.12)"
-                                      : "rgba(16,185,129,0.1)"
-                                    : "rgba(245,158,11,0.15)",
-                                  color: areQuizResultsReleasedToStudent(s)
-                                    ? "var(--nclex-success)"
-                                    : "var(--nclex-warning)",
-                                }}
-                              >
-                                {!areQuizResultsReleasedToStudent(s)
-                                  ? "Awaiting tutor"
-                                  : s.status === "reviewed"
-                                    ? "Reviewed"
-                                    : "Released"}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <Button asChild variant="link" className="h-auto p-0 text-[var(--nclex-primary)]">
-                                <Link href={`/student/nclex/results/${s.id}`}>Review</Link>
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                  {sessions.filter((s) => s.status === "submitted" || s.status === "reviewed").length === 0 ? (
-                    <p className="px-4 py-8 text-center text-sm nclex-text-muted">No submitted attempts yet.</p>
-                  ) : null}
-                </div>
-              </Card>
-            </section>
-            ) : null}
 
             <div className="flex justify-end">
               <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => void signOut()}>

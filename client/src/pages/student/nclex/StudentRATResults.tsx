@@ -8,6 +8,7 @@ import { NursingFactLoader } from "@/components/nclex/NursingFactLoader";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { getCorrectAnswerIds, listQuestionsByIds, subscribeRatSession, toStudentQuestion } from "@/lib/firestore/nclex";
 import type { Question, RatSession } from "@/lib/firestore/nclexTypes";
+import { STUDENT_NCLEX_DASHBOARD } from "@/lib/nclex/studentNclexRoutes";
 import { ArrowLeft } from "lucide-react";
 
 export default function StudentRATResults() {
@@ -79,7 +80,7 @@ export default function StudentRATResults() {
   return (
     <div className="nclex-app min-h-screen bg-gradient-to-b from-slate-50/80 to-white pb-16">
       <div className="mx-auto max-w-2xl space-y-6 px-4 pt-8 sm:px-6">
-        <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate("/student/nclex")}>
+        <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
           <ArrowLeft className="h-4 w-4" />
           Dashboard
         </Button>

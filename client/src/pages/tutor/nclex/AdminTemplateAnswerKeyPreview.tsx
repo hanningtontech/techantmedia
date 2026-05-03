@@ -13,6 +13,7 @@ import {
 import { ExplanationBlocks } from "@/components/nclex/ExplanationBlocks";
 import { QuestionCard } from "@/components/nclex/QuestionCard";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
+import { useNclexAdminExamType } from "@/hooks/useNclexAdminExamType";
 import {
   getCorrectAnswerIds,
   getQuizTemplateById,
@@ -35,6 +36,7 @@ export default function AdminTemplateAnswerKeyPreview() {
   const { templateId } = useParams() as { templateId: string };
   const [, navigate] = useLocation();
   const { loading, profile } = useFirebaseAuth();
+  const { adminExamType } = useNclexAdminExamType();
   const [template, setTemplate] = useState<QuizTemplate | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [phase, setPhase] = useState<"boot" | "ready" | "missing">("boot");
@@ -53,7 +55,11 @@ export default function AdminTemplateAnswerKeyPreview() {
           return;
         }
         setTemplate(t);
-        const qs = await listPreviewQuestionsForQuizTemplate(t, { isAdmin: true, tutorUid: profile.uid });
+        const qs = await listPreviewQuestionsForQuizTemplate(t, {
+          isAdmin: true,
+          tutorUid: profile.uid,
+          studentTrack: adminExamType ?? null,
+        });
         if (cancelled) return;
         setQuestions(qs);
         setPhase("ready");
@@ -67,7 +73,7 @@ export default function AdminTemplateAnswerKeyPreview() {
     return () => {
       cancelled = true;
     };
-  }, [templateId, profile]);
+  }, [templateId, profile, adminExamType]);
 
   if (loading || phase === "boot") {
     return (
@@ -289,6 +295,10 @@ export default function AdminTemplateAnswerKeyPreview() {
               <span className="mt-2 block text-xs font-medium text-slate-700">
                 Bank category: <span className="text-slate-900">{catLabel}</span>
               </span>
+              <span className="mt-1 block text-xs text-slate-600">
+                Question pool uses the same <span className="font-medium">RN / PN selector</span> as the tutor dashboard
+                (Manage quizzes). Set it to mirror a student&apos;s nursing track.
+              </span>
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2 border-t pt-4">
@@ -369,6 +379,7 @@ export default function AdminTemplateAnswerKeyPreview() {
                   showCorrect
                   correctIds={correct}
                   compact
+                  imageLoading="eager"
                 />
                 {q.rationale ? <ExplanationBlocks rationale={q.rationale} /> : null}
               </div>

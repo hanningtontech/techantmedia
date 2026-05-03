@@ -21,8 +21,11 @@ import {
   canViewInProgressSectionResults,
   ensureQuizQuestionIds,
   getQuizSession,
+  getQuizTemplateById,
   hasPendingSectionScoreRequest,
   listStudentQuizQuestions,
+  resolveQuizTemplateQuestions,
+  toStudentQuestion,
   QUIZ_CHUNK_SIZE,
   requestSectionScore,
   responseSelectedIds,
@@ -38,6 +41,7 @@ import {
   writeQuizDraftCache,
   type QuizDraftSnapshot,
 } from "@/lib/nclex/quizDraftCache";
+import { STUDENT_NCLEX_DASHBOARD } from "@/lib/nclex/studentNclexRoutes";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -134,7 +138,23 @@ export default function StudentQuizFirestore() {
         return;
       }
       const filter = s.filterCategory?.trim() || null;
-      let qs = await listStudentQuizQuestions(filter);
+      const tmpl =
+        s.templateId != null && String(s.templateId).trim() ? await getQuizTemplateById(String(s.templateId).trim()) : null;
+      const templateExam = tmpl?.examType ?? null;
+      let qs: StudentQuestion[];
+      if (tmpl?.fixedQuestionIds?.length) {
+        const pool = await resolveQuizTemplateQuestions(tmpl, {
+          isAdmin: true,
+          tutorUid: "",
+          studentTrack: profile.nursingTrack ?? null,
+        });
+        qs = pool.map(toStudentQuestion);
+      } else {
+        qs = await listStudentQuizQuestions(filter, {
+          studentTrack: profile.nursingTrack ?? null,
+          templateExam,
+        });
+      }
       if (gen !== loadGenRef.current) return;
       const lim = s.questionLimit;
       if (lim != null && lim > 0) qs = qs.slice(0, lim);
@@ -452,7 +472,7 @@ export default function StudentQuizFirestore() {
               <p className="text-sm leading-relaxed text-slate-600">
                 Your session link is valid after you sign in with the same account that started the attempt.
               </p>
-              <Button className="nclex-btn-primary w-full sm:w-auto" onClick={() => navigate("/student/nclex")}>
+              <Button className="nclex-btn-primary w-full sm:w-auto" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
                 Go to student home
               </Button>
             </CardContent>
@@ -473,7 +493,7 @@ export default function StudentQuizFirestore() {
             below.
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => navigate("/student/nclex")}>
+        <Button type="button" variant="outline" size="sm" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
           Back to dashboard
         </Button>
       </div>
@@ -490,7 +510,7 @@ export default function StudentQuizFirestore() {
               <p className="text-sm leading-relaxed text-slate-600">
                 The link may be wrong, the attempt may belong to another account, or it was already submitted.
               </p>
-              <Button className="nclex-btn-primary" onClick={() => navigate("/student/nclex")}>
+              <Button className="nclex-btn-primary" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
                 Back to dashboard
               </Button>
             </CardContent>
@@ -515,7 +535,7 @@ export default function StudentQuizFirestore() {
                 <Button className="nclex-btn-primary" onClick={() => void loadQuiz()}>
                   Try again
                 </Button>
-                <Button variant="outline" onClick={() => navigate("/student/nclex")}>
+                <Button variant="outline" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
                   Dashboard
                 </Button>
               </div>
@@ -544,7 +564,7 @@ export default function StudentQuizFirestore() {
       <NclexHeader
         title={sessionMeta?.quizTitle ?? "NCLEX practice quiz"}
         subtitle={`Question ${idx + 1} of ${questions.length}`}
-        homeHref="/student/nclex"
+        homeHref={STUDENT_NCLEX_DASHBOARD}
         homeLabel="Dashboard"
       />
 

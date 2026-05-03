@@ -7,6 +7,7 @@ import { QuestionCard } from "@/components/nclex/QuestionCard";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { listStudentQuestionsByIds, subscribeRatSession, submitRatSession } from "@/lib/firestore/nclex";
 import type { RatSession, StudentQuestion } from "@/lib/firestore/nclexTypes";
+import { STUDENT_NCLEX_DASHBOARD } from "@/lib/nclex/studentNclexRoutes";
 import { toast } from "sonner";
 import { ArrowLeft, Clock, Send } from "lucide-react";
 
@@ -120,7 +121,7 @@ export default function StudentRATTake() {
     <div className="nclex-app min-h-screen bg-gradient-to-b from-slate-50/80 to-white pb-24">
       <div className="mx-auto max-w-3xl space-y-6 px-4 pt-8 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate("/student/nclex")}>
+          <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
             <ArrowLeft className="h-4 w-4" />
             Dashboard
           </Button>

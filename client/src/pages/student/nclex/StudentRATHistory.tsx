@@ -7,6 +7,7 @@ import { NursingFactLoader } from "@/components/nclex/NursingFactLoader";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { listRatSessionsForStudent } from "@/lib/firestore/nclex";
 import type { RatSession } from "@/lib/firestore/nclexTypes";
+import { STUDENT_NCLEX_DASHBOARD } from "@/lib/nclex/studentNclexRoutes";
 import { ArrowLeft } from "lucide-react";
 
 function whenLabel(ts: any): string {
@@ -43,7 +44,7 @@ export default function StudentRATHistory() {
   if (loading) {
     return (
       <div className="nclex-app nclex-shell min-h-screen">
-        <NclexHeader title="RAT history" homeHref="/student/nclex" homeLabel="Dashboard" />
+        <NclexHeader title="RAT history" homeHref={STUDENT_NCLEX_DASHBOARD} homeLabel="Dashboard" />
         <NursingFactLoader seed="ratHistory" title="Loading RAT history" subtitle="Fetching your attempts…" />
       </div>
     );
@@ -55,7 +56,7 @@ export default function StudentRATHistory() {
         <Card className="nclex-card mx-auto max-w-md">
           <CardContent className="space-y-4 p-6">
             <p className="text-sm font-medium text-slate-800">Sign in to view RAT history.</p>
-            <Button className="nclex-btn-primary" onClick={() => navigate("/student/nclex")}>
+            <Button className="nclex-btn-primary" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
               Student home
             </Button>
           </CardContent>
@@ -66,9 +67,9 @@ export default function StudentRATHistory() {
 
   return (
     <div className="nclex-app nclex-shell min-h-screen pb-16">
-      <NclexHeader title="RAT history" subtitle="Your Random Assessment Tests only" homeHref="/student/nclex" homeLabel="Dashboard" />
+      <NclexHeader title="RAT history" subtitle="Your Random Assessment Tests only" homeHref={STUDENT_NCLEX_DASHBOARD} homeLabel="Dashboard" />
       <main className="nclex-main mx-auto max-w-3xl space-y-5 pt-2 sm:space-y-6 xl:max-w-4xl">
-        <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate("/student/nclex")}>
+        <Button variant="ghost" size="sm" className="gap-1" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
           <ArrowLeft className="h-4 w-4" />
           Dashboard
         </Button>

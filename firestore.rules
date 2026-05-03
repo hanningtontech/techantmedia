@@ -183,5 +183,74 @@ service cloud.firestore {
       allow read: if isSignedIn() && (isAdmin() || resource.data.published == true);
       allow create, update, delete: if isTutorOrAdmin();
     }
+
+    /** Tutor/admin-authored study notes (text); tagged by NCLEX track and catalog hierarchy. */
+    match /classNotes/{noteId} {
+      allow read: if isSignedIn() && (isTutorOrAdmin() || resource.data.published == true);
+      allow create, update, delete: if isTutorOrAdmin();
+    }
+
+    /** Instructor-led tutoring sessions: quiz bundles + roster; students read only when published and assigned. */
+    match /tutoringSessions/{sessionId} {
+      allow read: if isSignedIn() && (
+        isTutorOrAdmin()
+        || (
+          resource.data.published == true
+          && request.auth.uid in resource.data.assignedStudentIds
+        )
+      );
+      allow create: if isTutorOrAdmin()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if isTutorOrAdmin() && (
+        isAdmin()
+        || !resource.data.keys().hasAny(['locked'])
+        || resource.data.locked != true
+      );
+    }
+
+    /** Per-student session row: extra quizzes, exclusions, tutor notes. */
+    match /tutoringSessions/{sessionId}/participants/{studentId} {
+      allow read: if isSignedIn() && (
+        isTutorOrAdmin()
+        || (
+          get(/databases/$(database)/documents/tutoringSessions/$(sessionId)).data.published == true
+          && request.auth.uid == studentId
+          && studentId in get(/databases/$(database)/documents/tutoringSessions/$(sessionId)).data.assignedStudentIds
+        )
+      );
+      allow create, update, delete: if isTutorOrAdmin() && (
+        isAdmin()
+        || !get(/databases/$(database)/documents/tutoringSessions/$(sessionId)).data.keys().hasAny(['locked'])
+        || get(/databases/$(database)/documents/tutoringSessions/$(sessionId)).data.locked != true
+      );
+    }
+
+    /** Student asks admin to unlock a locked session (doc id = studentId). */
+    match /tutoringSessions/{sessionId}/unlockRequests/{reqStudentId} {
+      function tutoringSessionData() {
+        return get(/databases/$(database)/documents/tutoringSessions/$(sessionId)).data;
+      }
+      allow read: if isSignedIn() && (
+        isTutorOrAdmin()
+        || (
+          request.auth.uid == reqStudentId
+          && exists(/databases/$(database)/documents/tutoringSessions/$(sessionId))
+          && tutoringSessionData().published == true
+          && reqStudentId in tutoringSessionData().assignedStudentIds
+        )
+      );
+      allow create, update: if isSignedIn()
+        && request.auth.uid == reqStudentId
+        && reqStudentId == request.resource.data.studentId
+        && exists(/databases/$(database)/documents/tutoringSessions/$(sessionId))
+        && tutoringSessionData().published == true
+        && reqStudentId in tutoringSessionData().assignedStudentIds
+        && tutoringSessionData().keys().hasAny(['locked'])
+        && tutoringSessionData().locked == true
+        && request.resource.data.status == 'pending'
+        && request.resource.data.message is string
+        && request.resource.data.message.size() < 2000;
+      allow delete: if isTutorOrAdmin();
+    }
   }
 }

@@ -6,6 +6,7 @@ import { NclexHeader } from "@/components/nclex/NclexHeader";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { useRedirectStudentIfPending } from "@/hooks/useStudentNclexAccessGuard";
 import { formatAuthOrFirestoreError } from "@/lib/authErrorMessage";
+import { STUDENT_NCLEX_DASHBOARD } from "@/lib/nclex/studentNclexRoutes";
 import { getPresentationById } from "@/lib/firestore/presentations";
 import { toast } from "sonner";
 import { ArrowLeft, ExternalLink, Presentation } from "lucide-react";
@@ -70,7 +71,7 @@ export default function StudentPresentationViewer() {
   if (loading || busy) {
     return (
       <div className="nclex-app nclex-shell min-h-screen">
-        <NclexHeader title="Presentation viewer" homeHref="/student/nclex" homeLabel="Dashboard" />
+        <NclexHeader title="Presentation viewer" homeHref={STUDENT_NCLEX_DASHBOARD} homeLabel="Dashboard" />
         <div className="nclex-main flex min-h-[50vh] flex-col items-center justify-center gap-3 py-16">
           <div className="h-9 w-9 animate-spin rounded-full border-2 border-blue-200 border-t-[var(--nclex-primary)]" />
           <p className="text-sm font-medium text-slate-700">Loading presentation…</p>
@@ -85,7 +86,7 @@ export default function StudentPresentationViewer() {
         <Card className="nclex-card mx-auto max-w-md">
           <CardContent className="space-y-4 p-6">
             <p className="text-sm font-medium text-slate-800">Sign in to view presentations.</p>
-            <Button className="nclex-btn-primary" onClick={() => navigate("/student/nclex")}>
+            <Button className="nclex-btn-primary" onClick={() => navigate(STUDENT_NCLEX_DASHBOARD)}>
               Student home
             </Button>
           </CardContent>

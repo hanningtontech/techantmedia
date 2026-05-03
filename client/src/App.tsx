@@ -24,8 +24,10 @@ import AdminSendStudentNotification from "./pages/tutor/nclex/AdminSendStudentNo
 import AdminNotifications from "./pages/tutor/nclex/AdminNotifications";
 import AdminPresentations from "./pages/tutor/nclex/AdminPresentations";
 import AdminStudyGuides from "./pages/tutor/nclex/AdminStudyGuides";
+import AdminNclexNotes from "./pages/tutor/nclex/AdminNclexNotes";
 import WrittenQnsPage from "./pages/WrittenQnsPage";
 import { Route, Switch } from "wouter";
+import { StudentTutoringFloatingDock } from "@/components/tutoring/StudentTutoringFloatingDock";
 
 const QuizResults = lazy(() => import("./pages/student/nclex/QuizResults"));
 const StudentNCLEXDashboard = lazy(() => import("./pages/student/nclex/StudentNCLEXDashboard"));
@@ -38,7 +40,14 @@ const StudentRATResults = lazy(() => import("./pages/student/nclex/StudentRATRes
 const StudentRATHistory = lazy(() => import("./pages/student/nclex/StudentRATHistory"));
 const StudentPresentations = lazy(() => import("./pages/student/nclex/StudentPresentations"));
 const StudentStudyGuides = lazy(() => import("./pages/student/nclex/StudentStudyGuides"));
+const StudentNclexNotes = lazy(() => import("./pages/student/nclex/StudentNclexNotes"));
+const StudentNclexHub = lazy(() => import("./pages/student/nclex/StudentNclexHub"));
+const StudentNclexTrackSelect = lazy(() => import("./pages/student/nclex/StudentNclexTrackSelect"));
 const StudentPresentationViewer = lazy(() => import("./pages/student/nclex/StudentPresentationViewer"));
+const AdminTutoringSessions = lazy(() => import("./pages/tutor/nclex/AdminTutoringSessions"));
+const AdminTutoringSessionDetail = lazy(() => import("./pages/tutor/nclex/AdminTutoringSessionDetail"));
+const AdminTopicProgress = lazy(() => import("./pages/tutor/nclex/AdminTopicProgress"));
+const StudentTutoringSessionDetail = lazy(() => import("./pages/student/nclex/StudentTutoringSessionDetail"));
 
 function App() {
   return (
@@ -65,6 +74,10 @@ function App() {
             <Route path="/tutor/nclex/notifications" component={AdminNotifications} />
             <Route path="/tutor/nclex/presentations" component={AdminPresentations} />
             <Route path="/tutor/nclex/study-guides" component={AdminStudyGuides} />
+            <Route path="/tutor/nclex/class-notes" component={AdminNclexNotes} />
+            <Route path="/tutor/nclex/tutoring-sessions/:sessionId" component={AdminTutoringSessionDetail} />
+            <Route path="/tutor/nclex/tutoring-sessions" component={AdminTutoringSessions} />
+            <Route path="/tutor/nclex/topic-progress" component={AdminTopicProgress} />
             <Route path="/tutor/nclex" component={TutorNCLEXDashboard} />
             <Route path="/student/pending-approval" component={StudentPendingApprovalPage} />
             <Route path="/student/disabled" component={StudentDisabledPage} />
@@ -77,13 +90,18 @@ function App() {
             <Route path="/student/nclex/history" component={StudentQuizHistory} />
             <Route path="/student/nclex/profile" component={StudentProfile} />
             <Route path="/student/nclex/notifications" component={StudentNotificationsPage} />
+            <Route path="/student/nclex/track" component={StudentNclexTrackSelect} />
+            <Route path="/student/nclex/class-notes" component={StudentNclexNotes} />
             <Route path="/student/nclex/presentations" component={StudentPresentations} />
             <Route path="/student/nclex/presentations/view/:id" component={StudentPresentationViewer} />
             <Route path="/student/nclex/study-guides" component={StudentStudyGuides} />
-            <Route path="/student/nclex" component={StudentNCLEXDashboard} />
+            <Route path="/student/nclex/tutoring/:sessionId" component={StudentTutoringSessionDetail} />
+            <Route path="/student/nclex/dashboard" component={StudentNCLEXDashboard} />
+            <Route path="/student/nclex" component={StudentNclexHub} />
             <Route path="/" component={Portfolio} />
             <Route component={Portfolio} />
           </Switch>
+          <StudentTutoringFloatingDock />
           </Suspense>
         </TooltipProvider>
       </FirebaseAuthProvider>

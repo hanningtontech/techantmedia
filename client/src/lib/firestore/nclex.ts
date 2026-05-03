@@ -32,8 +32,18 @@ import {
 } from "@/lib/nclex/keywordExtractor";
 import { computeCatScoreFromAttempt } from "@/lib/nclex/catScoring";
 import { questionTextSuggestsMultipleAnswers } from "@/lib/nclex/sataPrompt";
+import {
+  questionMatchesStudentTrack,
+  questionMatchesTemplatePool,
+  templateMatchesAdminSession,
+  templateVisibleToStudent,
+  parseNclexExamType,
+} from "@/lib/nclex/examTypeFilters";
+import { normalizeHttpUrlForMedia } from "@/lib/nclex/nclexQuestionMedia";
+import type { NursingTrack } from "@/lib/userTypes";
 import type {
   AdminNotification,
+  NclexExamType,
   Question,
   QuestionAdminOnly,
   QuestionInput,
@@ -98,10 +108,21 @@ function snapToQuestion(id: string, data: DocumentData): Question {
   const correctAnswerIds = Array.isArray(data.correctAnswerIds)
     ? (data.correctAnswerIds as unknown[]).map((x) => String(x).toLowerCase().trim()).filter(Boolean)
     : undefined;
+  const fromStem = typeof data.stemImageUrl === "string" ? data.stemImageUrl.trim() : "";
+  const fromLegacy =
+    typeof (data as { imageUrl?: unknown }).imageUrl === "string"
+      ? String((data as { imageUrl?: string }).imageUrl).trim()
+      : "";
+  const siu = fromStem || fromLegacy;
+  const ex = parseNclexExamType(data.examType);
+  const ncc = typeof data.nclexCategory === "string" ? data.nclexCategory.trim() : "";
+  const nct = typeof data.nclexTopic === "string" ? data.nclexTopic.trim() : "";
+  const ncs = typeof data.nclexSubtopic === "string" ? data.nclexSubtopic.trim() : "";
   return {
     id,
     title: String(data.title ?? ""),
     questionText: String(data.questionText ?? ""),
+    ...(siu ? { stemImageUrl: siu } : {}),
     topic: typeof data.topic === "string" && data.topic.trim() ? data.topic.trim() : undefined,
     options: Array.isArray(data.options) ? data.options : [],
     correctAnswerId: String(data.correctAnswerId ?? ""),
@@ -110,6 +131,11 @@ function snapToQuestion(id: string, data: DocumentData): Question {
     rationale: String(data.rationale ?? ""),
     keywordsList: Array.isArray(data.keywordsList) ? data.keywordsList.map(String) : [],
     category: String(data.category ?? ""),
+    ...(ex ? { examType: ex } : {}),
+    ...(ncc ? { nclexCategory: ncc } : {}),
+    ...(nct ? { nclexTopic: nct } : {}),
+    ...(ncs ? { nclexSubtopic: ncs } : {}),
+    ...(data.isGeneral === true ? { isGeneral: true } : {}),
     createdBy: String(data.createdBy ?? ""),
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
@@ -289,6 +315,8 @@ export async function createRatSessionFromHistory(opts: {
   studentId: string;
   studentName: string;
   questionCount: 5 | 10 | 15 | 20;
+  /** When set, only questions aligned with this track are eligible. */
+  nursingTrack?: NursingTrack | null;
 }): Promise<string> {
   const db = requireDb();
   const n = Number(opts.questionCount);
@@ -354,8 +382,21 @@ export async function createRatSessionFromHistory(opts: {
     picked.push(...any.slice(0, need));
   }
 
-  const questionIds = shuffleInPlace(Array.from(new Set(picked))).slice(0, n);
-  if (questionIds.length < n) throw new Error("Not enough question history to generate this assessment.");
+  let questionIds = shuffleInPlace(Array.from(new Set(picked))).slice(0, n);
+  if (opts.nursingTrack) {
+    const qs = await listQuestionsByIds(questionIds);
+    const allow = new Set(
+      qs.filter((q) => questionMatchesStudentTrack(q.examType, opts.nursingTrack)).map((q) => q.id),
+    );
+    questionIds = questionIds.filter((id) => allow.has(id));
+  }
+  if (questionIds.length < n) {
+    throw new Error(
+      opts.nursingTrack
+        ? "Not enough NCLEX track–aligned questions in your history. Complete more quizzes for your track first."
+        : "Not enough question history to generate this assessment.",
+    );
+  }
 
   const durationSeconds = n * 60;
   const endsAtMs = Date.now() + durationSeconds * 1000;
@@ -537,10 +578,12 @@ function studentAllowsMultipleAnswers(q: Question): boolean {
 }
 
 export function toStudentQuestion(q: Question): StudentQuestion {
+  const stem = q.stemImageUrl?.trim() ? normalizeHttpUrlForMedia(q.stemImageUrl) : "";
   return {
     id: q.id,
     title: q.title,
     questionText: q.questionText,
+    ...(stem ? { stemImageUrl: stem } : {}),
     options: q.options,
     category: q.category,
     topic: q.topic,
@@ -556,9 +599,11 @@ export async function createQuestion(data: QuestionInput, tutorId: string): Prom
   const caIds = data.correctAnswerIds?.length
     ? Array.from(new Set(data.correctAnswerIds.map((x) => String(x).toLowerCase().trim()))).filter(Boolean)
     : undefined;
+  const stemImageUrl = data.stemImageUrl?.trim() || null;
   const ref = await addDoc(collection(db, COL_QUESTIONS), {
     title: data.title,
     questionText: data.questionText,
+    stemImageUrl,
     topic: data.topic?.trim() || null,
     options: data.options,
     correctAnswerId: data.correctAnswerId,
@@ -567,6 +612,11 @@ export async function createQuestion(data: QuestionInput, tutorId: string): Prom
     rationale: data.rationale,
     keywordsList,
     category: data.category ?? "",
+    examType: data.examType ?? null,
+    nclexCategory: data.nclexCategory?.trim() || null,
+    nclexTopic: data.nclexTopic?.trim() || null,
+    nclexSubtopic: data.nclexSubtopic?.trim() || null,
+    isGeneral: data.isGeneral === true,
     createdBy: tutorId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -585,8 +635,27 @@ function documentDataOmitUndefined(raw: Record<string, unknown>): DocumentData {
 
 export async function updateQuestion(questionId: string, data: Partial<QuestionInput>): Promise<void> {
   const db = requireDb();
-  const { whyOthersIncorrect, ...fields } = data;
+  const {
+    whyOthersIncorrect,
+    stemImageUrl,
+    examType,
+    nclexCategory,
+    nclexTopic,
+    nclexSubtopic,
+    isGeneral,
+    ...fields
+  } = data;
   const next: Record<string, unknown> = { ...fields, updatedAt: serverTimestamp() };
+  if (stemImageUrl !== undefined) {
+    next.stemImageUrl = typeof stemImageUrl === "string" && stemImageUrl.trim() ? stemImageUrl.trim() : null;
+  }
+  if (examType !== undefined) {
+    next.examType = examType === null || examType === undefined ? null : examType;
+  }
+  if (nclexCategory !== undefined) next.nclexCategory = nclexCategory?.trim() || null;
+  if (nclexTopic !== undefined) next.nclexTopic = nclexTopic?.trim() || null;
+  if (nclexSubtopic !== undefined) next.nclexSubtopic = nclexSubtopic?.trim() || null;
+  if (isGeneral !== undefined) next.isGeneral = Boolean(isGeneral);
   if (fields.rationale && fields.keywordsList === undefined) {
     next.keywordsList = extractKeywords(fields.rationale);
   }
@@ -656,6 +725,7 @@ export async function bulkImportQuestions(questions: QuestionInput[], tutorId: s
       batch.set(ref, {
         title: q.title,
         questionText: q.questionText,
+        stemImageUrl: q.stemImageUrl?.trim() || null,
         topic: q.topic?.trim() || null,
         options: q.options,
         correctAnswerId: q.correctAnswerId,
@@ -664,6 +734,11 @@ export async function bulkImportQuestions(questions: QuestionInput[], tutorId: s
         rationale: q.rationale,
         keywordsList,
         category: q.category ?? "",
+        examType: q.examType ?? null,
+        nclexCategory: q.nclexCategory?.trim() || null,
+        nclexTopic: q.nclexTopic?.trim() || null,
+        nclexSubtopic: q.nclexSubtopic?.trim() || null,
+        isGeneral: q.isGeneral === true,
         createdBy: tutorId,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -691,8 +766,22 @@ export type CreateQuizSessionOptions = {
   questionLimit?: number | null;
 };
 
+function parseContentKind(raw: unknown): QuizTemplate["contentKind"] {
+  const s = String(raw ?? "").toLowerCase().trim();
+  if (s === "quiz" || s === "exam" || s === "notes" || s === "presentation" || s === "video") return s;
+  return undefined;
+}
+
 function snapToQuizTemplate(id: string, data: DocumentData): QuizTemplate {
   const fc = data.filterCategory;
+  const ex = parseNclexExamType(data.examType);
+  const ncc = typeof data.nclexCategory === "string" ? data.nclexCategory.trim() : "";
+  const nct = typeof data.nclexTopic === "string" ? data.nclexTopic.trim() : "";
+  const ncs = typeof data.nclexSubtopic === "string" ? data.nclexSubtopic.trim() : "";
+  const ck = parseContentKind(data.contentKind);
+  const fixedRaw = Array.isArray(data.fixedQuestionIds)
+    ? (data.fixedQuestionIds as unknown[]).map((x) => String(x).trim()).filter(Boolean)
+    : [];
   return {
     id,
     title: String(data.title ?? ""),
@@ -706,6 +795,13 @@ function snapToQuizTemplate(id: string, data: DocumentData): QuizTemplate {
     createdBy: String(data.createdBy ?? ""),
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
+    ...(ex ? { examType: ex } : {}),
+    ...(ncc ? { nclexCategory: ncc } : {}),
+    ...(nct ? { nclexTopic: nct } : {}),
+    ...(ncs ? { nclexSubtopic: ncs } : {}),
+    ...(data.isGeneral === true ? { isGeneral: true } : {}),
+    ...(ck ? { contentKind: ck } : {}),
+    ...(fixedRaw.length ? { fixedQuestionIds: fixedRaw } : {}),
   };
 }
 
@@ -741,11 +837,14 @@ export async function createQuizSession(
 }
 
 /** Active quizzes for the student home (all tutors’ templates; small-team MVP). */
-export async function listPublishedQuizTemplates(): Promise<QuizTemplate[]> {
+export async function listPublishedQuizTemplates(opts?: { adminExamType?: NursingTrack | null }): Promise<QuizTemplate[]> {
   const db = requireDb();
   const qy = query(collection(db, COL_QUIZ_TEMPLATES), where("isActive", "==", true));
   const snaps = await getDocs(qy);
-  const rows = snaps.docs.map((d) => snapToQuizTemplate(d.id, d.data()));
+  let rows = snaps.docs.map((d) => snapToQuizTemplate(d.id, d.data()));
+  if (opts?.adminExamType) {
+    rows = rows.filter((t) => templateMatchesAdminSession(t.examType, opts.adminExamType ?? null));
+  }
   rows.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
   return rows;
 }
@@ -758,20 +857,61 @@ export async function getQuizTemplateById(templateId: string): Promise<QuizTempl
 }
 
 /**
+ * Questions for a template: when `fixedQuestionIds` is set, uses that ordered list; otherwise the category pool
+ * (same rules as a live student attempt).
+ */
+export async function resolveQuizTemplateQuestions(
+  template: Pick<QuizTemplate, "filterCategory" | "questionLimit" | "examType" | "fixedQuestionIds">,
+  opts: { isAdmin: boolean; tutorUid: string; studentTrack?: NursingTrack | null },
+): Promise<Question[]> {
+  const fixed = (template.fixedQuestionIds ?? []).map((x) => String(x).trim()).filter(Boolean);
+  if (fixed.length) {
+    const loaded = await listQuestionsByIds(fixed);
+    const byId = new Map(loaded.map((q) => [q.id, q]));
+    const ordered: Question[] = [];
+    for (const id of fixed) {
+      const q = byId.get(id);
+      if (!q || !q.isActive) continue;
+      if (opts.studentTrack && !questionMatchesStudentTrack(q.examType, opts.studentTrack)) continue;
+      if (template.examType != null && !questionMatchesTemplatePool(q.examType, template.examType)) continue;
+      if (!opts.isAdmin && opts.tutorUid && q.createdBy !== opts.tutorUid) continue;
+      ordered.push(q);
+    }
+    const lim = template.questionLimit > 0 ? template.questionLimit : ordered.length;
+    return ordered.slice(0, lim);
+  }
+  const rows = await filterQuestionsForQuizPool({
+    filterCategory: template.filterCategory,
+    studentTrack: opts.studentTrack ?? null,
+    templateExam: template.examType ?? null,
+    tutorScope: { isAdmin: opts.isAdmin, tutorUid: opts.tutorUid },
+  });
+  const lim = template.questionLimit != null && template.questionLimit > 0 ? template.questionLimit : null;
+  return lim != null ? rows.slice(0, lim) : rows;
+}
+
+/**
  * Same question pool and cap as a student attempt from this template (admin: uses full bank; tutors: own items only).
- * Order matches `listStudentQuizQuestions` (listQuestions order, then category filter, then first N).
+ * Order matches `listStudentQuizQuestions` when using category pool; fixed-ID templates preserve ID order.
  */
 export async function listPreviewQuestionsForQuizTemplate(
-  template: Pick<QuizTemplate, "filterCategory" | "questionLimit">,
-  opts: { isAdmin: boolean; tutorUid: string },
+  template: Pick<QuizTemplate, "filterCategory" | "questionLimit" | "examType" | "fixedQuestionIds">,
+  opts: { isAdmin: boolean; tutorUid: string; studentTrack?: NursingTrack | null },
 ): Promise<Question[]> {
-  const all = await listQuestions(opts.isAdmin ? undefined : opts.tutorUid);
-  const f = template.filterCategory?.trim().toLowerCase();
-  const filtered = f
-    ? all.filter((q) => (q.category?.trim() || "General").toLowerCase() === f)
-    : all;
-  const lim = template.questionLimit != null && template.questionLimit > 0 ? template.questionLimit : null;
-  return lim != null ? filtered.slice(0, lim) : filtered;
+  return resolveQuizTemplateQuestions(template, opts);
+}
+
+/** How many questions a student would see for this template (category pool or fixed list). */
+export async function countQuestionsForQuizTemplate(
+  template: Pick<QuizTemplate, "filterCategory" | "questionLimit" | "examType" | "fixedQuestionIds">,
+  opts?: { studentTrack?: NursingTrack | null; tutorUid?: string; isAdmin?: boolean },
+): Promise<number> {
+  const rows = await resolveQuizTemplateQuestions(template, {
+    isAdmin: opts?.isAdmin ?? true,
+    tutorUid: opts?.tutorUid ?? "",
+    studentTrack: opts?.studentTrack,
+  });
+  return rows.length;
 }
 
 function assignmentDocId(studentId: string, templateId: string): string {
@@ -800,7 +940,10 @@ export async function unassignQuizTemplateFromStudent(studentId: string, templat
   await setDoc(doc(db, COL_QUIZ_ASSIGNMENTS, id), { isActive: false }, { merge: true }).catch(() => {});
 }
 
-export async function listAssignedQuizTemplates(studentId: string): Promise<QuizTemplate[]> {
+export async function listAssignedQuizTemplates(
+  studentId: string,
+  studentTrack?: NursingTrack | null,
+): Promise<QuizTemplate[]> {
   const db = requireDb();
   const qy = query(
     collection(db, COL_QUIZ_ASSIGNMENTS),
@@ -815,6 +958,7 @@ export async function listAssignedQuizTemplates(studentId: string): Promise<Quiz
     if (!tSnap.exists()) continue;
     const t = snapToQuizTemplate(tSnap.id, tSnap.data());
     if (!t.isActive) continue;
+    if (studentTrack && !templateVisibleToStudent(t.examType, studentTrack)) continue;
     out.push(t);
   }
   out.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
@@ -848,12 +992,20 @@ export async function getActiveQuizAssignmentCountsByStudent(): Promise<Map<stri
   return map;
 }
 
-export async function listQuizTemplatesForEditor(opts: { tutorUid: string; isAdmin: boolean }): Promise<QuizTemplate[]> {
+export async function listQuizTemplatesForEditor(opts: {
+  tutorUid: string;
+  isAdmin: boolean;
+  /** When set (recommended for admins), only templates for this NCLEX track (+ legacy/both). */
+  adminExamType?: NursingTrack | null;
+}): Promise<QuizTemplate[]> {
   const db = requireDb();
   const snaps = await getDocs(collection(db, COL_QUIZ_TEMPLATES));
   let rows = snaps.docs.map((d) => snapToQuizTemplate(d.id, d.data()));
   if (!opts.isAdmin) {
     rows = rows.filter((r) => r.createdBy === opts.tutorUid);
+  }
+  if (opts.adminExamType) {
+    rows = rows.filter((r) => templateMatchesAdminSession(r.examType, opts.adminExamType ?? null));
   }
   rows.sort((a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title));
   return rows;
@@ -865,17 +1017,23 @@ export async function createQuizTemplate(data: QuizTemplateInput, tutorId: strin
   const nextTitle = data.title.trim();
   const nextFilter = (fc || "").toLowerCase();
   const nextLimit = Math.max(0, Number(data.questionLimit ?? 0));
-  const nextKey = `${nextTitle.toLowerCase()}::${nextFilter}::${nextLimit}`;
-  // Prevent accidental duplicates (same title + category + cap).
-  const existing = await getDocs(collection(db, COL_QUIZ_TEMPLATES));
-  for (const d of existing.docs) {
-    const t = snapToQuizTemplate(d.id, d.data());
-    const key = `${t.title.trim().toLowerCase()}::${(t.filterCategory ?? "").trim().toLowerCase()}::${Math.max(
-      0,
-      Number(t.questionLimit ?? 0),
-    )}`;
-    if (key === nextKey) {
-      throw new Error(`A quiz with the same title/category/limit already exists ("${t.title}").`);
+  const nextExam = data.examType ?? "legacy";
+  const fixedIds = Array.isArray(data.fixedQuestionIds)
+    ? data.fixedQuestionIds.map((x) => String(x).trim()).filter(Boolean)
+    : [];
+  const nextKey = `${nextTitle.toLowerCase()}::${nextFilter}::${nextLimit}::${nextExam}`;
+  // Prevent accidental duplicates (same title + category + cap + exam type) — skipped for fixed-ID extracts.
+  if (!fixedIds.length) {
+    const existing = await getDocs(collection(db, COL_QUIZ_TEMPLATES));
+    for (const d of existing.docs) {
+      const t = snapToQuizTemplate(d.id, d.data());
+      const key = `${t.title.trim().toLowerCase()}::${(t.filterCategory ?? "").trim().toLowerCase()}::${Math.max(
+        0,
+        Number(t.questionLimit ?? 0),
+      )}::${t.examType ?? "legacy"}`;
+      if (key === nextKey) {
+        throw new Error(`A quiz with the same title/category/limit/track already exists ("${t.title}").`);
+      }
     }
   }
   const ref = await addDoc(collection(db, COL_QUIZ_TEMPLATES), {
@@ -887,6 +1045,13 @@ export async function createQuizTemplate(data: QuizTemplateInput, tutorId: strin
       data.estimatedMinutes != null && Number(data.estimatedMinutes) > 0 ? Number(data.estimatedMinutes) : null,
     sortOrder: Number(data.sortOrder ?? 0),
     isActive: data.isActive ?? true,
+    examType: data.examType ?? null,
+    nclexCategory: data.nclexCategory?.trim() || null,
+    nclexTopic: data.nclexTopic?.trim() || null,
+    nclexSubtopic: data.nclexSubtopic?.trim() || null,
+    isGeneral: data.isGeneral === true,
+    contentKind: data.contentKind ?? null,
+    fixedQuestionIds: fixedIds.length ? fixedIds : null,
     createdBy: tutorId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -910,6 +1075,16 @@ export async function updateQuizTemplate(quizId: string, data: Partial<QuizTempl
   }
   if (data.sortOrder != null) payload.sortOrder = Number(data.sortOrder);
   if (data.isActive != null) payload.isActive = Boolean(data.isActive);
+  if (data.examType !== undefined) payload.examType = data.examType;
+  if (data.nclexCategory !== undefined) payload.nclexCategory = data.nclexCategory?.trim() || null;
+  if (data.nclexTopic !== undefined) payload.nclexTopic = data.nclexTopic?.trim() || null;
+  if (data.nclexSubtopic !== undefined) payload.nclexSubtopic = data.nclexSubtopic?.trim() || null;
+  if (data.isGeneral !== undefined) payload.isGeneral = Boolean(data.isGeneral);
+  if (data.contentKind !== undefined) payload.contentKind = data.contentKind ?? null;
+  if (data.fixedQuestionIds !== undefined) {
+    const f = (data.fixedQuestionIds ?? []).map((x) => String(x).trim()).filter(Boolean);
+    payload.fixedQuestionIds = f.length ? f : null;
+  }
   await updateDoc(doc(db, COL_QUIZ_TEMPLATES, quizId), payload);
 }
 
@@ -923,9 +1098,17 @@ export async function setQuizTemplateActive(quizId: string, isActive: boolean): 
 }
 
 /** How many questions a student would see for this filter + limit (same logic as the live quiz). */
-export async function countQuizQuestionPool(filterCategory: string | null, questionLimit?: number | null): Promise<number> {
-  const qs = await listStudentQuizQuestions(filterCategory);
-  const n = qs.length;
+export async function countQuizQuestionPool(
+  filterCategory: string | null,
+  questionLimit?: number | null,
+  opts?: { studentTrack?: NursingTrack | null; templateExam?: NclexExamType | null },
+): Promise<number> {
+  const rows = await filterQuestionsForQuizPool({
+    filterCategory,
+    studentTrack: opts?.studentTrack ?? null,
+    templateExam: opts?.templateExam ?? null,
+  });
+  const n = rows.length;
   if (questionLimit != null && questionLimit > 0) return Math.min(questionLimit, n);
   return n;
 }
@@ -1397,13 +1580,113 @@ export async function extractKeywordsFromRationale(rationale: string): Promise<s
   return extractKeywords(rationale);
 }
 
+/** Questions matching category, optional student NCLEX track, and optional template exam tag. */
+export async function filterQuestionsForQuizPool(args: {
+  filterCategory: string | null | undefined;
+  studentTrack?: NursingTrack | null;
+  templateExam?: NclexExamType | null;
+  tutorScope?: { isAdmin: boolean; tutorUid: string };
+}): Promise<Question[]> {
+  const all = await listQuestions(args.tutorScope?.isAdmin ? undefined : args.tutorScope?.tutorUid);
+  const f = args.filterCategory?.trim().toLowerCase();
+  let rows = f
+    ? all.filter((q) => (q.category?.trim() || "General").toLowerCase() === f)
+    : all;
+  if (args.studentTrack) {
+    rows = rows.filter((q) => questionMatchesStudentTrack(q.examType, args.studentTrack));
+  }
+  if (args.templateExam != null) {
+    rows = rows.filter((q) => questionMatchesTemplatePool(q.examType, args.templateExam));
+  }
+  return rows;
+}
+
+/** Match questions tagged with NCLEX blueprint fields (or “General” bucket). */
+export function questionMatchesNclexBlueprintFilter(
+  q: Question,
+  blueprint: { nclexCategory: string; nclexTopic: string; nclexSubtopic: string; isGeneral: boolean },
+): boolean {
+  if (blueprint.isGeneral) return q.isGeneral === true;
+  const cat = blueprint.nclexCategory.trim();
+  const top = blueprint.nclexTopic.trim();
+  const sub = blueprint.nclexSubtopic.trim();
+  if (cat && (q.nclexCategory ?? "").trim() !== cat) return false;
+  if (top && (q.nclexTopic ?? "").trim() !== top) return false;
+  if (sub && (q.nclexSubtopic ?? "").trim() !== sub) return false;
+  return true;
+}
+
+/** Distinct question-bank categories (test banks) for questions matching a blueprint slice. */
+export async function listBankCategoryCountsForBlueprint(args: {
+  nclexCategory: string;
+  nclexTopic: string;
+  nclexSubtopic: string;
+  isGeneral: boolean;
+  templateExam: NclexExamType | null;
+  tutorUid: string;
+  isAdmin: boolean;
+}): Promise<{ category: string; count: number }[]> {
+  const all = await listQuestions(args.isAdmin ? undefined : args.tutorUid);
+  let rows = all.filter((q) => q.isActive);
+  rows = rows.filter((q) =>
+    questionMatchesNclexBlueprintFilter(q, {
+      nclexCategory: args.nclexCategory,
+      nclexTopic: args.nclexTopic,
+      nclexSubtopic: args.nclexSubtopic,
+      isGeneral: args.isGeneral,
+    }),
+  );
+  if (args.templateExam != null) {
+    rows = rows.filter((q) => questionMatchesTemplatePool(q.examType, args.templateExam));
+  }
+  const map = new Map<string, number>();
+  for (const q of rows) {
+    const c = (q.category ?? "").trim() || "General";
+    map.set(c, (map.get(c) ?? 0) + 1);
+  }
+  return Array.from(map.entries())
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category));
+}
+
+/** Questions in one bank category that also match the blueprint filter. */
+export async function listBankQuestionsForCategoryAndBlueprint(args: {
+  nclexCategory: string;
+  nclexTopic: string;
+  nclexSubtopic: string;
+  isGeneral: boolean;
+  filterCategory: string;
+  templateExam: NclexExamType | null;
+  tutorUid: string;
+  isAdmin: boolean;
+}): Promise<Question[]> {
+  const catNorm = args.filterCategory.trim().toLowerCase();
+  const all = await listQuestions(args.isAdmin ? undefined : args.tutorUid);
+  return all.filter((q) => {
+    if (!q.isActive) return false;
+    if (!questionMatchesNclexBlueprintFilter(q, {
+      nclexCategory: args.nclexCategory,
+      nclexTopic: args.nclexTopic,
+      nclexSubtopic: args.nclexSubtopic,
+      isGeneral: args.isGeneral,
+    })) {
+      return false;
+    }
+    if (args.templateExam != null && !questionMatchesTemplatePool(q.examType, args.templateExam)) return false;
+    return (q.category ?? "").trim().toLowerCase() === catNorm;
+  });
+}
+
 /** Active questions for quiz UI (strip sensitive fields before render). */
-export async function listStudentQuizQuestions(filterCategory?: string | null): Promise<StudentQuestion[]> {
-  const qs = await listQuestions();
-  const f = filterCategory?.trim().toLowerCase();
-  const filtered = f
-    ? qs.filter((q) => (q.category?.trim() || "General").toLowerCase() === f)
-    : qs;
+export async function listStudentQuizQuestions(
+  filterCategory?: string | null,
+  opts?: { studentTrack?: NursingTrack | null; templateExam?: NclexExamType | null },
+): Promise<StudentQuestion[]> {
+  const filtered = await filterQuestionsForQuizPool({
+    filterCategory,
+    studentTrack: opts?.studentTrack ?? null,
+    templateExam: opts?.templateExam ?? null,
+  });
   return filtered.map(toStudentQuestion);
 }
 

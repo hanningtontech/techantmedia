@@ -1,7 +1,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { NclexHotlinkImageNotice } from "@/components/nclex/NclexHotlinkImageNotice";
+import { NclexOptionRichText, NclexUrlRichText } from "@/components/nclex/NclexUrlRichText";
 import { cn } from "@/lib/utils";
+import {
+  extractFirstImageUrlFromText,
+  isPixabayCdnHotlinkBlocked,
+  normalizeHttpUrlForMedia,
+  stripFirstImageUrlFromText,
+} from "@/lib/nclex/nclexQuestionMedia";
 import type { StudentQuestion } from "@/lib/firestore/nclexTypes";
 
 type Props = {
@@ -17,6 +25,8 @@ type Props = {
   readOnly?: boolean;
   className?: string;
   compact?: boolean;
+  /** Inline/stem images: default lazy; use eager on long admin answer-key pages. */
+  imageLoading?: "eager" | "lazy";
 };
 
 export function QuestionCard({
@@ -29,10 +39,16 @@ export function QuestionCard({
   readOnly,
   className,
   compact,
+  imageLoading = "lazy",
 }: Props) {
   const showHeader = !compact && Boolean(question.title?.trim());
   const correctSet = new Set(correctIds);
   const selectedSet = new Set(value);
+  const stemFromField = question.stemImageUrl?.trim() ? normalizeHttpUrlForMedia(question.stemImageUrl) : "";
+  const stemFromBody = stemFromField ? "" : extractFirstImageUrlFromText(question.questionText) ?? "";
+  const stem = stemFromField || stemFromBody;
+  const questionTextForRich =
+    stemFromBody && !stemFromField ? stripFirstImageUrlFromText(question.questionText) : question.questionText;
 
   const toggle = (optId: string, checked: boolean) => {
     if (readOnly) return;
@@ -55,9 +71,24 @@ export function QuestionCard({
         </CardHeader>
       ) : null}
       <CardContent className={cn("space-y-3 sm:space-y-4", !showHeader && "pt-4 sm:pt-6")}>
-        <p className="text-pretty text-sm leading-relaxed text-slate-900 whitespace-pre-wrap sm:text-base sm:leading-relaxed">
-          {question.questionText}
-        </p>
+        <div className="text-pretty text-sm leading-relaxed text-slate-900 whitespace-pre-wrap sm:text-base sm:leading-relaxed">
+          <NclexUrlRichText text={questionTextForRich} imageLoading={imageLoading} />
+        </div>
+        {stem ? (
+          <div className="overflow-hidden rounded-lg border border-[var(--nclex-border)] bg-white/90">
+            {isPixabayCdnHotlinkBlocked(stem) ? (
+              <NclexHotlinkImageNotice href={stem} context="stem" className="border-0 bg-transparent" />
+            ) : (
+              <img
+                src={stem}
+                alt=""
+                className="mx-auto max-h-[min(420px,70vh)] w-full max-w-full object-contain"
+                loading={imageLoading}
+                decoding="async"
+              />
+            )}
+          </div>
+        ) : null}
         {question.allowMultipleAnswers && !readOnly ? (
           <p className="text-xs font-semibold text-[var(--nclex-primary)] sm:text-sm">
             <strong className="font-bold">Select all that apply</strong> — choose every correct option for this item.
@@ -92,17 +123,25 @@ export function QuestionCard({
                   />
                 )}
                 {readOnly ? (
-                  <div className="flex-1 text-sm leading-relaxed sm:text-base">
+                  <div className="min-w-0 flex-1 text-sm leading-relaxed sm:text-base">
                     <span className="font-bold tabular-nums text-slate-900">{opt.id.toUpperCase()}.</span>{" "}
-                    <span className="text-slate-800">{opt.text}</span>
+                    <NclexOptionRichText
+                      text={opt.text}
+                      className="text-slate-800 whitespace-pre-wrap"
+                      imageLoading={imageLoading}
+                    />
                   </div>
                 ) : (
                   <Label
                     htmlFor={`${question.id}-${opt.id}`}
-                    className="flex-1 cursor-pointer text-sm font-normal leading-relaxed sm:text-base"
+                    className="min-w-0 flex-1 cursor-pointer text-sm font-normal leading-relaxed sm:text-base"
                   >
                     <span className="font-bold tabular-nums text-slate-900">{opt.id.toUpperCase()}.</span>{" "}
-                    <span className="text-slate-800">{opt.text}</span>
+                    <NclexOptionRichText
+                      text={opt.text}
+                      className="text-slate-800 whitespace-pre-wrap"
+                      imageLoading={imageLoading}
+                    />
                   </Label>
                 )}
               </div>

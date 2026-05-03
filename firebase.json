@@ -22,8 +22,12 @@
     ]
   }
   ,
-  "functions": {
-    "source": "functions"
-  }
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs20"
+    }
+  ]
 }
 
