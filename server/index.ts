@@ -2,19 +2,124 @@ import express from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
+import { existsSync, readFileSync } from "fs";
 import crypto from "crypto";
 import axios from "axios";
-import { initializeApp, applicationDefault, getApps } from "firebase-admin/app";
+import { config as loadEnv } from "dotenv";
+import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const REPO_ROOT = path.resolve(__dirname, "..");
+
+// Load repo-root .env (B2 keys, optional Firebase admin service account).
+loadEnv({ path: path.resolve(REPO_ROOT, ".env") });
+
+const EXPECTED_FIREBASE_PROJECT =
+  process.env.FIREBASE_PROJECT_ID?.trim() ||
+  process.env.VITE_FIREBASE_PROJECT_ID?.trim() ||
+  "hanningtonkutria-portfolio";
+
+type ServiceAccountFields = {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
+};
+
+function parseServiceAccountJson(raw: string): ServiceAccountFields {
+  const j = JSON.parse(raw) as Record<string, unknown>;
+  return {
+    projectId: String(j.project_id ?? j.projectId ?? "").trim(),
+    clientEmail: String(j.client_email ?? j.clientEmail ?? "").trim(),
+    privateKey: String(j.private_key ?? j.privateKey ?? "")
+      .replace(/\\n/g, "\n")
+      .trim(),
+  };
+}
+
+function serviceAccountFromFile(filePath: string): ServiceAccountFields {
+  const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(REPO_ROOT, filePath);
+  if (!existsSync(resolved)) {
+    throw new Error(`Service account file not found: ${resolved}`);
+  }
+  return parseServiceAccountJson(readFileSync(resolved, "utf8"));
+}
+
+function resolveServiceAccount(): ServiceAccountFields {
+  const fromEnv: ServiceAccountFields = {
+    projectId: process.env.FIREBASE_PROJECT_ID?.trim() || EXPECTED_FIREBASE_PROJECT,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL?.trim() || "",
+    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n").trim() || "",
+  };
+  if (fromEnv.clientEmail && fromEnv.privateKey) return fromEnv;
+
+  const credPath =
+    process.env.FIREBASE_SERVICE_ACCOUNT_PATH?.trim() ||
+    process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim() ||
+    "";
+  if (credPath) return serviceAccountFromFile(credPath);
+
+  throw new Error(
+    `Firebase Admin needs credentials for project "${EXPECTED_FIREBASE_PROJECT}". ` +
+      `In Firebase Console → ${EXPECTED_FIREBASE_PROJECT} → Project settings → Service accounts → Generate new private key, ` +
+      `save the JSON in this repo (e.g. service-account.json), then add to .env:\n` +
+      `FIREBASE_SERVICE_ACCOUNT_PATH=./service-account.json\n` +
+      `(Your PC may have gcloud credentials for a different project — do not rely on those for this app.)`,
+  );
+}
 
 function initAdmin() {
   if (getApps().length) return;
-  // Uses GOOGLE_APPLICATION_CREDENTIALS (recommended) or other ADC sources in production.
-  initializeApp({ credential: applicationDefault() });
+
+  const sa = resolveServiceAccount();
+  if (!sa.projectId || !sa.clientEmail || !sa.privateKey) {
+    throw new Error("Service account JSON is missing project_id, client_email, or private_key");
+  }
+  if (sa.projectId !== EXPECTED_FIREBASE_PROJECT) {
+    throw new Error(
+      `Service account is for Firebase project "${sa.projectId}" but this app uses "${EXPECTED_FIREBASE_PROJECT}". ` +
+        `Download a key from the ${EXPECTED_FIREBASE_PROJECT} project (not xiaomigadgetskenya or another app).`,
+    );
+  }
+
+  initializeApp({
+    credential: cert({
+      projectId: sa.projectId,
+      clientEmail: sa.clientEmail,
+      privateKey: sa.privateKey,
+    }),
+  });
+}
+
+function apiErrorMessage(e: unknown): string {
+  if (axios.isAxiosError(e)) {
+    const data = e.response?.data;
+    if (data && typeof data === "object") {
+      const msg = (data as { message?: string; code?: string }).message;
+      if (msg) return msg;
+    }
+    if (typeof data === "string" && data.trim()) return data.trim();
+    const status = e.response?.status;
+    if (status) return `Upstream request failed (${status})`;
+  }
+  if (e instanceof Error && e.message) return e.message;
+  return "Upload failed";
+}
+
+function sendApiError(res: express.Response, e: unknown, fallbackStatus = 500) {
+  const msg = apiErrorMessage(e);
+  const status =
+    msg === "Forbidden"
+      ? 403
+      : msg === "Missing auth token"
+        ? 401
+        : msg.startsWith("Missing ")
+          ? 500
+          : fallbackStatus;
+  console.error("[api]", msg, e);
+  return res.status(status).json({ error: msg });
 }
 
 async function requireAdmin(req: express.Request): Promise<{ uid: string }> {
@@ -80,9 +185,9 @@ async function b2GetUploadUrl(auth: { apiUrl: string; authorizationToken: string
   return { uploadUrl: String(d.uploadUrl), uploadAuthToken: String(d.authorizationToken) };
 }
 
-async function startServer() {
+/** Express app with /api routes only (used by Vite dev on :5000 and by production server). */
+export function createApiApp() {
   const app = express();
-  const server = createServer(app);
 
   // JSON for API routes
   app.use(express.json({ limit: "2mb" }));
@@ -203,10 +308,71 @@ async function startServer() {
           .join("/")}`;
 
         return res.json({ fileId, fileName, downloadUrl, sizeBytes: body.length, contentType });
-      } catch (e: any) {
-        const msg = typeof e?.message === "string" ? e.message : "Upload failed";
-        const status = msg === "Forbidden" ? 403 : msg.startsWith("Missing ") ? 500 : 400;
-        return res.status(status).json({ error: msg });
+      } catch (e: unknown) {
+        return sendApiError(res, e, 400);
+      }
+    },
+  );
+
+  app.post(
+    "/api/b2/portfolio-images/:uploadId",
+    express.raw({ type: "*/*", limit: "15mb" }),
+    async (req, res) => {
+      try {
+        await requireAdmin(req);
+        const uploadId = String(req.params.uploadId ?? "").trim();
+        if (!uploadId) return res.status(400).json({ error: "Missing uploadId" });
+
+        const fileNameHeader = String(req.headers["x-file-name"] ?? "").trim();
+        const originalName = fileNameHeader || "image.png";
+        const lower = originalName.toLowerCase();
+        if (
+          !(
+            lower.endsWith(".png") ||
+            lower.endsWith(".jpg") ||
+            lower.endsWith(".jpeg") ||
+            lower.endsWith(".gif") ||
+            lower.endsWith(".webp")
+          )
+        ) {
+          return res.status(400).json({ error: "Only .png, .jpg, .jpeg, .gif, or .webp images are supported" });
+        }
+
+        const body = req.body as Buffer;
+        if (!body || !Buffer.isBuffer(body) || body.length === 0) {
+          return res.status(400).json({ error: "Missing file bytes" });
+        }
+
+        const contentType = String(req.headers["content-type"] ?? "").trim() || "application/octet-stream";
+        const sha1 = crypto.createHash("sha1").update(body).digest("hex");
+
+        const b2 = await b2Authorize();
+        const up = await b2GetUploadUrl(b2);
+        const bucketName = requireEnv("B2_BUCKET_NAME");
+
+        const b2FileName = `portfolio-images/${uploadId}/${originalName}`;
+        const uploadRes = await axios.post(up.uploadUrl, body, {
+          headers: {
+            Authorization: up.uploadAuthToken,
+            "X-Bz-File-Name": encodeURIComponent(b2FileName).replace(/%2F/g, "/"),
+            "Content-Type": contentType,
+            "X-Bz-Content-Sha1": sha1,
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+
+        const out = uploadRes.data as any;
+        const fileId = String(out.fileId ?? "");
+        const fileName = String(out.fileName ?? b2FileName);
+        const downloadUrl = `${b2.downloadUrl}/file/${encodeURIComponent(bucketName)}/${fileName
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}`;
+
+        return res.json({ fileId, fileName, downloadUrl, sizeBytes: body.length, contentType });
+      } catch (e: unknown) {
+        return sendApiError(res, e, 400);
       }
     },
   );
@@ -232,26 +398,36 @@ async function startServer() {
     }
   });
 
-  // Serve static files from dist/public in production
-  const staticPath =
-    process.env.NODE_ENV === "production"
-      ? path.resolve(__dirname, "public")
-      : path.resolve(__dirname, "..", "dist", "public");
+  return app;
+}
 
-  app.use(express.static(staticPath));
+async function startServer() {
+  const app = createApiApp();
+  const server = createServer(app);
 
-  // Handle client-side routing - serve index.html for all routes
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(staticPath, "index.html"));
-  });
+  // Production only: serve built SPA. In dev, Vite on port 5000 serves the UI + mounts createApiApp.
+  if (process.env.NODE_ENV === "production") {
+    const staticPath = path.resolve(__dirname, "public");
+    app.use(express.static(staticPath));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(staticPath, "index.html"));
+    });
+  }
 
   const port =
+    process.env.API_PORT ||
     process.env.PORT ||
-    (process.env.NODE_ENV === "production" ? 3000 : 3001);
+    (process.env.NODE_ENV === "production" ? 3000 : 5001);
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
   });
 }
 
-startServer().catch(console.error);
+const isDirectRun =
+  process.argv[1] &&
+  path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
+
+if (isDirectRun) {
+  void startServer().catch(console.error);
+}

@@ -297,6 +297,10 @@ export function isTutorOrAdmin(profile: AuthUserProfile | null): boolean {
   return profile?.role === "tutor" || profile?.role === "admin";
 }
 
+export function isAdmin(profile: AuthUserProfile | null): boolean {
+  return profile?.role === "admin";
+}
+
 export function isStudentOrAbove(profile: AuthUserProfile | null): boolean {
   return !!profile;
 }

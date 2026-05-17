@@ -9,17 +9,21 @@ import {
   ChevronRight,
   ExternalLink,
   BookOpen,
+  Settings,
 } from "lucide-react";
+import { usePortfolioContent } from "@/hooks/usePortfolioContent";
+import { renderRichText } from "@/lib/portfolio/renderRichText";
+import { educationCardClass, expertiseCardClass } from "@/lib/portfolio/expertiseStyles";
+import type { BadgeTone } from "@/lib/portfolio/portfolioTypes";
 
 export default function Portfolio() {
+  const { content } = usePortfolioContent();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [imageViewer, setImageViewer] = useState<{
     title: string;
     images: readonly string[];
     index: number;
   } | null>(null);
-
-  type BadgeTone = "green" | "slate" | "amber" | "blue" | "purple" | "orange";
 
   const badgeToneClass: Record<BadgeTone, string> = {
     green: "bg-emerald-50 text-emerald-700 ring-emerald-200",
@@ -30,126 +34,8 @@ export default function Portfolio() {
     orange: "bg-orange-50 text-orange-700 ring-orange-200",
   };
 
-  const projects = [
-    {
-      title: "Passmartshop (Storefront)",
-      description: "Customer-facing e‑commerce website with search, product pages, and checkout UX.",
-      images: ["/projects/passmartshop-storefront.png", "/projects/passmartshop-product.png"],
-      badges: [
-        { label: "Completed", tone: "green" as const },
-        { label: "Web", tone: "slate" as const },
-      ],
-      links: [{ label: "Live", href: "https://passmartshop.com" }],
-    },
-    {
-      title: "Passmartshop Admin",
-      description: "Dark admin panels for managing the shop: products, categories, orders, and bulk tools.",
-      images: ["/projects/passmartshop-admin-dashboard.png", "/projects/passmartshop-admin-products.png"],
-      badges: [
-        { label: "Completed", tone: "green" as const },
-        { label: "Admin", tone: "amber" as const },
-      ],
-      links: [{ label: "Admin", href: "https://passmartshop-admin.web.app/admin" }],
-    },
-    {
-      title: "DJMovies App",
-      description: "Movie catalog + player experience with admin controls for collections and content.",
-      images: ["/projects/djmovies-1.png", "/projects/djmovies-2.png", "/projects/djmovies-3.png", "/projects/djmovies-4.png"],
-      badges: [
-        { label: "Completed", tone: "green" as const },
-        { label: "Admin", tone: "amber" as const },
-      ],
-      links: [{ label: "Live", href: "https://djcommetrymovies.web.app" }],
-    },
-    {
-      title: "Meal Planner App",
-      description: "Mobile meal planning experience with recipes, daily suggestions, and quick actions.",
-      images: ["/projects/meal-planner.png"],
-      badges: [
-        { label: "Completed", tone: "green" as const },
-        { label: "Android", tone: "slate" as const },
-      ],
-      links: [],
-    },
-    {
-      title: "Maasai Mara University App",
-      description: "Student-focused university mobile app for online services, notices, and campus info.",
-      images: ["/projects/maasai-mara-app.png"],
-      badges: [
-        { label: "Completed", tone: "green" as const },
-        { label: "Android", tone: "slate" as const },
-      ],
-      links: [],
-    },
-    {
-      title: "Car Logo Guessing Game",
-      description: "Mobile quiz game with timed rounds, feedback screens, and score/coins tracking.",
-      images: ["/projects/car-logo-game.png"],
-      badges: [
-        { label: "Completed", tone: "green" as const },
-        { label: "Game", tone: "purple" as const },
-      ],
-      links: [],
-    },
-    {
-      title: "NurseConnect",
-      description: "Community hub for nurses plus study mode UI (with groups and progress).",
-      images: ["/projects/nurseconnect-1.png", "/projects/nurseconnect-2.png", "/projects/nurseconnect-3.png"],
-      badges: [
-        { label: "Completed", tone: "green" as const },
-        { label: "Android", tone: "slate" as const },
-      ],
-      links: [],
-    },
-    {
-      title: "AI Advisor App",
-      description: "Study assistant screens focused on progress, streaks, and guided sessions.",
-      images: ["/projects/ai-advisor-1.png", "/projects/ai-advisor-2.png"],
-      badges: [
-        { label: "Completed", tone: "green" as const },
-        { label: "AI", tone: "blue" as const },
-      ],
-      links: [],
-    },
-    {
-      title: "AIMpesaChat",
-      description: "Chat-based AI M‑Pesa assistant flow, including transaction views and conversational help.",
-      images: ["/projects/aimpesachat-1.png", "/projects/aimpesachat-2.png"],
-      badges: [
-        { label: "Completed", tone: "green" as const },
-        { label: "AI", tone: "blue" as const },
-      ],
-      links: [],
-    },
-  ] as const;
-
-  const nextProjects = [
-    {
-      title: "Personalized Shopping Assistant",
-      description: "Product recommendations + visual search + AI support chat.",
-      badges: [{ label: "Next", tone: "orange" as const }, { label: "AI", tone: "blue" as const }],
-    },
-    {
-      title: "Second‑Hand Marketplace",
-      description: "Listings + chat + escrow + AI pricing and moderation.",
-      badges: [{ label: "Next", tone: "orange" as const }, { label: "Marketplace", tone: "slate" as const }],
-    },
-    {
-      title: "Language Learning Companion",
-      description: "Pronunciation feedback + adaptive learning path + chatbot tutor.",
-      badges: [{ label: "Next", tone: "orange" as const }, { label: "EdTech", tone: "slate" as const }],
-    },
-    {
-      title: "Math Solver (OCR + Steps)",
-      description: "Scan questions, solve, and explain step‑by‑step.",
-      badges: [{ label: "Next", tone: "orange" as const }, { label: "AI", tone: "blue" as const }],
-    },
-    {
-      title: "Grocery App + Smart List",
-      description: "Recurring lists + personalized deals + delivery optimization.",
-      badges: [{ label: "Next", tone: "orange" as const }, { label: "E‑commerce", tone: "slate" as const }],
-    },
-  ] as const;
+  const projects = content.featuredProjects;
+  const nextProjects = content.nextProjects;
 
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
@@ -199,7 +85,7 @@ export default function Portfolio() {
       <nav className="fixed top-0 left-0 right-0 bg-white shadow-sm z-50">
         <div className="container flex items-center justify-between py-4">
           <Link href="/" className="text-2xl font-bold text-orange-600 hover:text-orange-700">
-            HK
+            {content.profile.navInitials}
           </Link>
 
           <div className="hidden md:flex items-center space-x-8">
@@ -236,6 +122,13 @@ export default function Portfolio() {
             >
               <BookOpen className="h-4 w-4" />
               NCLEX tutor
+            </Link>
+            <Link
+              href="/admin"
+              className="text-gray-700 hover:text-orange-600 transition-colors font-medium inline-flex items-center gap-1.5"
+            >
+              <Settings className="h-4 w-4" />
+              Admin
             </Link>
             <button
               onClick={() => scrollToSection("contact")}
@@ -276,6 +169,9 @@ export default function Portfolio() {
             <Link href="/tutor/nclex" className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded font-medium">
               NCLEX tutor
             </Link>
+            <Link href="/admin" className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded font-medium">
+              Admin
+            </Link>
             <button
               onClick={() => scrollToSection("contact")}
               className="block w-full bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700 transition-colors"
@@ -295,20 +191,16 @@ export default function Portfolio() {
         <div className="container relative z-10 flex flex-col items-center justify-center text-center">
           <div className="w-40 h-40 rounded-full bg-orange-500/30 border-4 border-white/30 mx-auto mb-8 flex items-center justify-center overflow-hidden shadow-2xl">
             <img
-              src="/profile.png"
-              alt="Portrait of Hannington Kuria"
+              src={content.profile.imageUrl}
+              alt={`Portrait of ${content.profile.name}`}
               className="w-full h-full object-cover object-[center_20%] bg-orange-600"
               loading="eager"
             />
           </div>
 
-          <h1 className="text-5xl md:text-6xl font-bold mb-4 leading-tight">Hannington Kuria</h1>
-          <p className="text-2xl md:text-3xl font-light mb-6 text-white/90">
-            Full‑stack web & Android developer building e‑commerce systems, admin dashboards, and AI‑powered payment automation.
-          </p>
-          <p className="text-lg md:text-xl mb-8 text-white/80 max-w-2xl">
-            I ship polished UIs, reliable backends, and integrations like M‑Pesa—turning product ideas into production‑ready apps.
-          </p>
+          <h1 className="text-5xl md:text-6xl font-bold mb-4 leading-tight">{content.profile.name}</h1>
+          <p className="text-2xl md:text-3xl font-light mb-6 text-white/90">{content.profile.tagline}</p>
+          <p className="text-lg md:text-xl mb-8 text-white/80 max-w-2xl">{content.profile.subtitle}</p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center w-full max-w-lg sm:max-w-none">
             <button
@@ -344,15 +236,11 @@ export default function Portfolio() {
         <div className="container">
           <h2 className="text-4xl font-bold text-gray-800 mb-8 text-center">About Me</h2>
           <div className="max-w-3xl mx-auto">
-            <p className="text-lg text-gray-700 leading-relaxed mb-4">
-              I’m a full‑stack developer who builds complete product ecosystems—customer‑facing web apps, admin dashboards, and Android experiences—backed by clean data models and reliable infrastructure. I’m strongest in <strong>React + TypeScript</strong> (Vite, Tailwind, Radix UI) and backend services using <strong>Firebase</strong> and <strong>Node/Express</strong>, with growing depth in <strong>Python/FastAPI</strong> for AI and automation.
-            </p>
-            <p className="text-lg text-gray-700 leading-relaxed">
-              I care about <strong>UI quality</strong>, <strong>speed</strong>, and <strong>clarity</strong>: thoughtful UX, predictable state/data flow, and documentation that makes teams faster. I enjoy complex integrations (like <strong>M‑Pesa Daraja</strong> + webhooks + WhatsApp), and building tools that make operations easy—imports/exports, product variants, permissions, and deployment guides.
-            </p>
-            <p className="text-lg text-gray-700 leading-relaxed mt-4">
-              I started coding in <strong>2021</strong> and quickly moved into building real products—like the <strong>Maasai Mara University Mobile App</strong>—while continuously leveling up through hands‑on shipping and iteration.
-            </p>
+            {content.about.paragraphs.map((para, i) => (
+              <p key={i} className={`text-lg text-gray-700 leading-relaxed ${i > 0 ? "mt-4" : "mb-4"}`}>
+                {renderRichText(para)}
+              </p>
+            ))}
           </div>
         </div>
       </section>
@@ -361,41 +249,22 @@ export default function Portfolio() {
         <div className="container">
           <h2 className="text-4xl font-bold text-gray-800 text-center mb-12">My Expertise</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-8 rounded-xl shadow-md hover:shadow-lg transition-shadow">
-              <h3 className="text-2xl font-semibold text-orange-600 mb-6">Web Development</h3>
-              <ul className="space-y-3 text-gray-700">
-                <li className="flex items-center"><span className="w-2 h-2 bg-orange-600 rounded-full mr-3"></span>React + TypeScript</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-orange-600 rounded-full mr-3"></span>Vite</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-orange-600 rounded-full mr-3"></span>Tailwind CSS</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-orange-600 rounded-full mr-3"></span>Radix UI</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-orange-600 rounded-full mr-3"></span>Admin dashboards & UX</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-orange-600 rounded-full mr-3"></span>Documentation & UI specs</li>
-              </ul>
-            </div>
-
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-8 rounded-xl shadow-md hover:shadow-lg transition-shadow">
-              <h3 className="text-2xl font-semibold text-blue-600 mb-6">Backend & Data</h3>
-              <ul className="space-y-3 text-gray-700">
-                <li className="flex items-center"><span className="w-2 h-2 bg-blue-600 rounded-full mr-3"></span>Firebase (Firestore, Storage, Hosting)</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-blue-600 rounded-full mr-3"></span>Node + Express</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-blue-600 rounded-full mr-3"></span>Payments: M‑Pesa Daraja, Stripe</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-blue-600 rounded-full mr-3"></span>Webhooks & callback servers</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-blue-600 rounded-full mr-3"></span>Data modeling (products, variants, orders)</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-blue-600 rounded-full mr-3"></span>Deployment guides & security notes</li>
-              </ul>
-            </div>
-
-            <div className="bg-gradient-to-br from-green-50 to-green-100 p-8 rounded-xl shadow-md hover:shadow-lg transition-shadow">
-              <h3 className="text-2xl font-semibold text-green-600 mb-6">Mobile, AI & Automation</h3>
-              <ul className="space-y-3 text-gray-700">
-                <li className="flex items-center"><span className="w-2 h-2 bg-green-600 rounded-full mr-3"></span>Android apps (native)</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-green-600 rounded-full mr-3"></span>Python + FastAPI</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-green-600 rounded-full mr-3"></span>AI agents (Gemini / Google ADK)</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-green-600 rounded-full mr-3"></span>WhatsApp automation (Twilio)</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-green-600 rounded-full mr-3"></span>Analytics & ML prototypes (scikit‑learn)</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-green-600 rounded-full mr-3"></span>Product thinking & execution</li>
-              </ul>
-            </div>
+            {content.expertise.map((card) => {
+              const styles = expertiseCardClass[card.color];
+              return (
+                <div key={card.id} className={`${styles.card} p-8 rounded-xl shadow-md hover:shadow-lg transition-shadow`}>
+                  <h3 className={`text-2xl font-semibold ${styles.title} mb-6`}>{card.title}</h3>
+                  <ul className="space-y-3 text-gray-700">
+                    {card.items.map((item) => (
+                      <li key={item} className="flex items-center">
+                        <span className={`w-2 h-2 ${styles.dot} rounded-full mr-3`} />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -410,7 +279,7 @@ export default function Portfolio() {
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
             {projects.map((p) => (
               <div
-                key={p.title}
+                key={p.id}
                 className="group bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-xl focus-within:shadow-xl"
               >
                 <div className="relative">
@@ -502,7 +371,7 @@ export default function Portfolio() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {nextProjects.map((idea) => (
                 <div
-                  key={idea.title}
+                  key={idea.id}
                   className="group bg-white rounded-2xl border border-gray-200 shadow-sm p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
                 >
                   <div className="flex flex-wrap gap-2 mb-4">
@@ -528,18 +397,17 @@ export default function Portfolio() {
         <div className="container">
           <h2 className="text-4xl font-bold text-gray-800 text-center mb-8">My Development Process</h2>
           <p className="text-lg text-gray-700 leading-relaxed max-w-3xl mx-auto text-center mb-10">
-            As a lead developer, I believe in clear communication and structured development. I regularly create comprehensive <strong>technical specifications and documentation</strong> to guide my team members. These documents ensure everyone is aligned on project goals, technical approaches, and implementation details, fostering efficient collaboration and high-quality outcomes.
+            {renderRichText(content.process.intro)}
           </p>
-
           <div className="bg-gradient-to-r from-orange-50 to-orange-100 p-8 rounded-xl">
-            <h3 className="text-2xl font-semibold text-gray-800 mb-6 text-center">Example Documentation Areas</h3>
+            <h3 className="text-2xl font-semibold text-gray-800 mb-6 text-center">{content.process.heading}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-center"><span className="w-3 h-3 bg-orange-600 rounded-full mr-4"></span> <span className="text-gray-700">Storefront-Backend Synchronization Guides</span></div>
-              <div className="flex items-center"><span className="w-3 h-3 bg-orange-600 rounded-full mr-4"></span> <span className="text-gray-700">API Endpoint Specifications (tRPC mutations)</span></div>
-              <div className="flex items-center"><span className="w-3 h-3 bg-orange-600 rounded-full mr-4"></span> <span className="text-gray-700">Firestore Data Model Schemas</span></div>
-              <div className="flex items-center"><span className="w-3 h-3 bg-orange-600 rounded-full mr-4"></span> <span className="text-gray-700">Component Usage Guidelines</span></div>
-              <div className="flex items-center"><span className="w-3 h-3 bg-orange-600 rounded-full mr-4"></span> <span className="text-gray-700">Deployment & Update Procedures</span></div>
-              <div className="flex items-center"><span className="w-3 h-3 bg-orange-600 rounded-full mr-4"></span> <span className="text-gray-700">Payment Integration Workflows</span></div>
+              {content.process.items.map((item) => (
+                <div key={item} className="flex items-center">
+                  <span className="w-3 h-3 bg-orange-600 rounded-full mr-4" />
+                  <span className="text-gray-700">{item}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -548,40 +416,27 @@ export default function Portfolio() {
       <section id="experience" className="py-20 bg-gray-50">
         <div className="container">
           <h2 className="text-4xl font-bold text-gray-800 text-center mb-4">Experience</h2>
-          <p className="text-lg text-gray-600 text-center mb-12 max-w-3xl mx-auto">
-            I focus on shipping complete systems—frontend, backend, integrations, and deployment—while keeping UX and maintainability high.
-          </p>
-
+          <p className="text-lg text-gray-600 text-center mb-12 max-w-3xl mx-auto">{content.experience.intro}</p>
           <div className="max-w-4xl mx-auto space-y-6">
-            <div className="bg-white p-8 rounded-xl shadow-md border border-gray-100">
-              <div className="flex items-start justify-between gap-6 flex-col sm:flex-row">
-                <div>
-                  <h3 className="text-2xl font-semibold text-gray-900">Lead Developer (Product Ecosystems)</h3>
-                  <p className="text-gray-600 mt-1">Web + Admin + Integrations</p>
+            {content.experience.items.map((job) => (
+              <div key={job.id} className="bg-white p-8 rounded-xl shadow-md border border-gray-100">
+                <div className="flex items-start justify-between gap-6 flex-col sm:flex-row">
+                  <div>
+                    <h3 className="text-2xl font-semibold text-gray-900">{job.title}</h3>
+                    <p className="text-gray-600 mt-1">{job.subtitle}</p>
+                  </div>
+                  <div className="text-gray-500 text-sm">{job.period}</div>
                 </div>
-                <div className="text-gray-500 text-sm">Recent work</div>
+                <ul className="mt-6 space-y-3 text-gray-700">
+                  {job.bullets.map((bullet) => (
+                    <li key={bullet} className="flex items-start">
+                      <ChevronRight size={20} className={`${job.accentColor === "blue" ? "text-blue-600" : "text-orange-600"} mr-2 flex-shrink-0 mt-0.5`} />
+                      <span>{renderRichText(bullet)}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <ul className="mt-6 space-y-3 text-gray-700">
-                <li className="flex items-start"><ChevronRight size={20} className="text-orange-600 mr-2 flex-shrink-0 mt-0.5" /> <span>Designed and built the <strong>Passmartshop</strong> storefront and a separate <strong>admin web</strong> for operations (products, categories, orders, bulk import/export).</span></li>
-                <li className="flex items-start"><ChevronRight size={20} className="text-orange-600 mr-2 flex-shrink-0 mt-0.5" /> <span>Created clear <strong>setup, deployment, and security guides</strong> to reduce onboarding time and prevent production mistakes.</span></li>
-                <li className="flex items-start"><ChevronRight size={20} className="text-orange-600 mr-2 flex-shrink-0 mt-0.5" /> <span>Worked on payments and integrations (including <strong>M‑Pesa</strong>) with real-world callback/webhook workflows.</span></li>
-              </ul>
-            </div>
-
-            <div className="bg-white p-8 rounded-xl shadow-md border border-gray-100">
-              <div className="flex items-start justify-between gap-6 flex-col sm:flex-row">
-                <div>
-                  <h3 className="text-2xl font-semibold text-gray-900">Backend / Automation Engineer</h3>
-                  <p className="text-gray-600 mt-1">FastAPI + AI + Webhooks</p>
-                </div>
-                <div className="text-gray-500 text-sm">Project-based</div>
-              </div>
-              <ul className="mt-6 space-y-3 text-gray-700">
-                <li className="flex items-start"><ChevronRight size={20} className="text-blue-600 mr-2 flex-shrink-0 mt-0.5" /> <span>Built an <strong>AI M‑Pesa payment agent</strong> with a REST API + CLI, session persistence, and real-time transaction tracking.</span></li>
-                <li className="flex items-start"><ChevronRight size={20} className="text-blue-600 mr-2 flex-shrink-0 mt-0.5" /> <span>Integrated <strong>Daraja</strong> and callback handling; optional WhatsApp automation via <strong>Twilio</strong>.</span></li>
-                <li className="flex items-start"><ChevronRight size={20} className="text-blue-600 mr-2 flex-shrink-0 mt-0.5" /> <span>Prototyped data-driven insights (classification + clustering) for a <strong>finance advisor</strong> workflow using pandas and scikit‑learn.</span></li>
-              </ul>
-            </div>
+            ))}
           </div>
         </div>
       </section>
@@ -589,67 +444,50 @@ export default function Portfolio() {
       <section id="education" className="py-20 bg-white">
         <div className="container">
           <h2 className="text-4xl font-bold text-gray-800 text-center mb-4">Education</h2>
-          <p className="text-lg text-gray-600 text-center mb-12 max-w-3xl mx-auto">
-            Strong fundamentals + continuous learning through real product delivery.
-          </p>
-
+          <p className="text-lg text-gray-600 text-center mb-12 max-w-3xl mx-auto">{content.education.intro}</p>
           <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-8 rounded-xl shadow-md">
-              <h3 className="text-2xl font-semibold text-gray-900 mb-2">BSc Computer Science</h3>
-              <p className="text-gray-700">
-                <strong>Maasai Mara University</strong> — <strong>Second Class Upper</strong>.
-              </p>
-              <ul className="mt-5 space-y-2 text-gray-700">
-                <li className="flex items-center"><span className="w-2 h-2 bg-slate-600 rounded-full mr-3"></span>Strong CS foundations: problem solving, systems thinking, and software engineering</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-slate-600 rounded-full mr-3"></span>Applied coursework through real product builds (including the university mobile app)</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-slate-600 rounded-full mr-3"></span>Continued growth through hands‑on shipping and modern tooling</li>
-              </ul>
-            </div>
-
-            <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-8 rounded-xl shadow-md">
-              <h3 className="text-2xl font-semibold text-gray-900 mb-2">Academic Highlights</h3>
-              <p className="text-gray-700">
-                I’ve always enjoyed analytical subjects and building with strong fundamentals.
-              </p>
-              <ul className="mt-5 space-y-2 text-gray-700">
-                <li className="flex items-center"><span className="w-2 h-2 bg-orange-600 rounded-full mr-3"></span>Best in <strong>Physics</strong> and <strong>Maths</strong> in high school</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-orange-600 rounded-full mr-3"></span>Strong applied problem solving and logical reasoning</li>
-                <li className="flex items-center"><span className="w-2 h-2 bg-orange-600 rounded-full mr-3"></span>Clear technical writing and documentation habits</li>
-              </ul>
-            </div>
+            {content.education.items.map((item) => (
+              <div key={item.id} className={`${educationCardClass[item.variant]} p-8 rounded-xl shadow-md`}>
+                <h3 className="text-2xl font-semibold text-gray-900 mb-2">{item.title}</h3>
+                <p className="text-gray-700">{renderRichText(item.description)}</p>
+                <ul className="mt-5 space-y-2 text-gray-700">
+                  {item.bullets.map((bullet) => (
+                    <li key={bullet} className="flex items-center">
+                      <span className={`w-2 h-2 rounded-full mr-3 ${item.variant === "orange" ? "bg-orange-600" : "bg-slate-600"}`} />
+                      {renderRichText(bullet)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
       <section id="contact" className="py-20 bg-gray-50">
         <div className="container">
-          <h2 className="text-4xl font-bold text-gray-800 text-center mb-4">Let's Connect!</h2>
-          <p className="text-lg text-gray-700 leading-relaxed max-w-3xl mx-auto text-center mb-12">
-            I’m open to freelance work, collaborations, and full‑time opportunities. If you need a developer who can build the full system (UI + backend + integrations), let’s talk.
-          </p>
-
+          <h2 className="text-4xl font-bold text-gray-800 text-center mb-4">{content.contact.heading}</h2>
+          <p className="text-lg text-gray-700 leading-relaxed max-w-3xl mx-auto text-center mb-12">{content.contact.intro}</p>
           <div className="max-w-2xl mx-auto space-y-6">
             <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow flex items-center">
               <Mail className="text-orange-600 mr-4 flex-shrink-0" size={28} />
               <div>
                 <p className="text-gray-600 text-sm">Email</p>
-                <a href="mailto:hanningtonkuria5@mail.com" className="text-xl text-orange-600 hover:underline font-semibold">hanningtonkuria5@mail.com</a>
+                <a href={`mailto:${content.contact.email}`} className="text-xl text-orange-600 hover:underline font-semibold">{content.contact.email}</a>
               </div>
             </div>
-
             <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow flex items-center">
               <Phone className="text-orange-600 mr-4 flex-shrink-0" size={28} />
               <div>
                 <p className="text-gray-600 text-sm">Phone</p>
-                <a href="tel:+254759550133" className="text-xl text-orange-600 hover:underline font-semibold">+254 759 550133</a>
+                <a href={`tel:${content.contact.phone}`} className="text-xl text-orange-600 hover:underline font-semibold">{content.contact.phone}</a>
               </div>
             </div>
-
             <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow flex items-center">
               <Github className="text-orange-600 mr-4 flex-shrink-0" size={28} />
               <div>
                 <p className="text-gray-600 text-sm">GitHub</p>
-                <a href="https://github.com/hanningtontech/Nocti-Weave" target="_blank" rel="noopener noreferrer" className="text-xl text-orange-600 hover:underline font-semibold">hanningtontech/Nocti-Weave</a>
+                <a href={content.contact.githubUrl} target="_blank" rel="noopener noreferrer" className="text-xl text-orange-600 hover:underline font-semibold">{content.contact.githubLabel}</a>
               </div>
             </div>
           </div>
@@ -749,8 +587,8 @@ export default function Portfolio() {
 
       <footer className="bg-gray-900 text-white py-8">
         <div className="container text-center">
-          <p className="text-gray-400">© 2026 Hannington Kuria. All rights reserved.</p>
-          <p className="text-gray-500 text-sm mt-2">Mobile & Web Developer | E‑commerce, Payments, and AI Automation</p>
+          <p className="text-gray-400">{content.footer.copyright}</p>
+          <p className="text-gray-500 text-sm mt-2">{content.footer.tagline}</p>
         </div>
       </footer>
     </div>

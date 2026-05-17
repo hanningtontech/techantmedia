@@ -150,7 +150,33 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+/** Mount portfolio API on the same port as Vite (5000) so only one dev URL is needed. */
+function portfolioApiDevPlugin(): Plugin {
+  return {
+    name: "portfolio-api-dev",
+    apply: "serve",
+    configureServer(viteServer) {
+      return async () => {
+        const { createApiApp } = await import("./server/index.ts");
+        const api = createApiApp();
+        viteServer.middlewares.use((req, res, next) => {
+          const url = req.url ?? "";
+          if (!url.startsWith("/api")) return next();
+          api(req, res, next);
+        });
+      };
+    },
+  };
+}
+
+const plugins = [
+  react(),
+  tailwindcss(),
+  jsxLocPlugin(),
+  vitePluginManusRuntime(),
+  vitePluginManusDebugCollector(),
+  portfolioApiDevPlugin(),
+];
 
 export default defineConfig({
   plugins,
@@ -181,16 +207,10 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
-    strictPort: false, // Will find next available port if 3000 is busy
+    // Portfolio-only ports — do not share 3000/3001 with other projects.
+    port: Number(process.env.DEV_WEB_PORT) || 5000,
+    strictPort: true,
     host: true,
-    proxy: {
-      // Dev: forward API calls to the Node server (default 3001 in development).
-      "/api": {
-        target: "http://localhost:3001",
-        changeOrigin: true,
-      },
-    },
     allowedHosts: [
       ".manuspre.computer",
       ".manus.computer",

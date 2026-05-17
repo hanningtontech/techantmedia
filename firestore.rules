@@ -226,6 +226,12 @@ service cloud.firestore {
     }
 
     /** Student asks admin to unlock a locked session (doc id = studentId). */
+    /** Public portfolio storefront content (home page). Anyone can read; only admins can edit. */
+    match /portfolio/{docId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
     match /tutoringSessions/{sessionId}/unlockRequests/{reqStudentId} {
       function tutoringSessionData() {
         return get(/databases/$(database)/documents/tutoringSessions/$(sessionId)).data;

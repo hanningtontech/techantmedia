@@ -201,6 +201,20 @@ async function requireTutorOrAdminFromBearer(req) {
         throw new Error("Forbidden");
     return { uid };
 }
+async function requireAdminFromBearer(req) {
+    ensureAdmin();
+    const header = String(req.headers?.authorization ?? "");
+    const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
+    if (!token)
+        throw new Error("Missing auth token");
+    const decoded = await admin.auth().verifyIdToken(token);
+    const uid = decoded.uid;
+    const snap = await admin.firestore().doc(`users/${uid}`).get();
+    const role = (snap.exists ? String(snap.data()?.role ?? "") : "").toLowerCase().trim();
+    if (role !== "admin")
+        throw new Error("Forbidden");
+    return { uid };
+}
 async function b2Authorize() {
     const keyId = B2_KEY_ID.value();
     const appKey = B2_APP_KEY.value();
@@ -269,13 +283,15 @@ exports.api = (0, https_1.onRequest)({
                 return "study-guides";
             if (path.startsWith("/b2/quiz-images/"))
                 return "quiz-images";
+            if (path.startsWith("/b2/portfolio-images/"))
+                return "portfolio-images";
             return null;
         };
         const isAllowedExt = (k, filename) => {
             const n = filename.toLowerCase();
             if (k === "presentations")
                 return n.endsWith(".pptx");
-            if (k === "quiz-images") {
+            if (k === "quiz-images" || k === "portfolio-images") {
                 return (n.endsWith(".png") ||
                     n.endsWith(".jpg") ||
                     n.endsWith(".jpeg") ||
@@ -284,7 +300,11 @@ exports.api = (0, https_1.onRequest)({
             }
             return n.endsWith(".pdf") || n.endsWith(".docx") || n.endsWith(".doc");
         };
-        const defaultName = (k) => k === "presentations" ? "presentation.pptx" : k === "quiz-images" ? "image.png" : "study-guide.pdf";
+        const defaultName = (k) => k === "presentations"
+            ? "presentation.pptx"
+            : k === "quiz-images" || k === "portfolio-images"
+                ? "image.png"
+                : "study-guide.pdf";
         // Public file proxy (published only). This makes Office viewer + downloads reliable.
         if (req.method === "GET" && (path.startsWith("/public/presentations/") || path.startsWith("/public/study-guides/"))) {
             const isPptx = path.startsWith("/public/presentations/");
@@ -359,12 +379,19 @@ exports.api = (0, https_1.onRequest)({
         // Upload bytes (admin only)
         const kind = kindFromPath();
         if (req.method === "POST" && kind) {
-            await requireTutorOrAdminFromBearer(req);
+            if (kind === "portfolio-images") {
+                await requireAdminFromBearer(req);
+            }
+            else {
+                await requireTutorOrAdminFromBearer(req);
+            }
             const basePrefix = kind === "presentations"
                 ? "/b2/presentations/"
                 : kind === "study-guides"
                     ? "/b2/study-guides/"
-                    : "/b2/quiz-images/";
+                    : kind === "portfolio-images"
+                        ? "/b2/portfolio-images/"
+                        : "/b2/quiz-images/";
             const docId = decodeURIComponent(path.replace(basePrefix, "").split("?")[0] || "").trim();
             if (!docId)
                 return json(res, 400, { error: "Missing docId" });
@@ -373,7 +400,7 @@ exports.api = (0, https_1.onRequest)({
                 return json(res, 400, {
                     error: kind === "presentations"
                         ? "Only .pptx files are supported"
-                        : kind === "quiz-images"
+                        : kind === "quiz-images" || kind === "portfolio-images"
                             ? "Only .png, .jpg, .jpeg, .gif, or .webp images are supported"
                             : "Only .pdf, .doc, or .docx files are supported",
                 });
@@ -385,7 +412,7 @@ exports.api = (0, https_1.onRequest)({
             const contentType = contentTypeRaw ||
                 (kind === "presentations"
                     ? "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    : kind === "quiz-images"
+                    : kind === "quiz-images" || kind === "portfolio-images"
                         ? "application/octet-stream"
                         : "application/octet-stream");
             const sha1 = crypto.createHash("sha1").update(buf).digest("hex");
@@ -396,7 +423,9 @@ exports.api = (0, https_1.onRequest)({
                 ? "class-presentations"
                 : kind === "study-guides"
                     ? "class-study-guides"
-                    : "quiz-question-images";
+                    : kind === "portfolio-images"
+                        ? "portfolio-images"
+                        : "quiz-question-images";
             const b2FileName = `${prefix}/${docId}/${originalName}`;
             const uploadRes = await fetch(up.uploadUrl, {
                 method: "POST",

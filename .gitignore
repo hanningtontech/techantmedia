@@ -10,6 +10,8 @@ build/
 # Environment variables
 .env
 .env.local
+service-account.json
+*-firebase-adminsdk-*.json
 .env.development.local
 .env.test.local
 .env.production.local

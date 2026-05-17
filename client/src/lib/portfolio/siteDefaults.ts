@@ -1,0 +1,117 @@
+import type { SiteContent } from "./portfolioTypes";
+import {
+  DEFAULT_PHOTO_CATEGORIES,
+  DEFAULT_PHOTO_HERO_SLIDES,
+  DEFAULT_PHOTOGRAPHY_SETTINGS,
+  DEFAULT_PROCESS_STEPS,
+  DEFAULT_RATE_CARD_GROUPS,
+  DEFAULT_VIDEO_CATEGORIES,
+  DEFAULT_VIDEO_GALLERY,
+  buildDefaultPhotoGallery,
+} from "./photographyDefaults";
+
+export const DEFAULT_SITE_CONTENT: SiteContent = {
+  brand: {
+    name: "TechantMedia",
+    tagline: "Creative vision. Technical precision. Educator-led excellence.",
+    heroImage:
+      "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1400&q=80&auto=format&fit=crop",
+    logoUrl: "",
+    navInitials: "TM",
+    email: "hanningtonkuria5@mail.com",
+    phone: "+254 759 550133",
+    youtube: "https://www.youtube.com/@techantmedia",
+    socials: [
+      { label: "Instagram", href: "https://instagram.com" },
+      { label: "YouTube", href: "https://www.youtube.com/@techantmedia" },
+      { label: "LinkedIn", href: "https://linkedin.com" },
+      { label: "GitHub", href: "https://github.com" },
+      { label: "X (Twitter)", href: "https://x.com" },
+    ],
+  },
+  serviceCards: [
+    {
+      id: "photo",
+      title: "Photography & Videography",
+      description:
+        "Cinematic storytelling for brands, weddings, and events—with polished delivery and fast turnaround.",
+      href: "/photography",
+      accent: "orange",
+      icon: "camera",
+      order: 0,
+    },
+    {
+      id: "dev",
+      title: "Full-Stack Development",
+      description: "Production-ready web apps, admin dashboards, payments, and mobile-backed APIs.",
+      href: "/development",
+      accent: "teal",
+      icon: "code",
+      order: 1,
+    },
+    {
+      id: "tutor",
+      title: "Online Tutoring (NCLEX)",
+      description: "Structured NCLEX prep with practice banks, rationales, and tutor-led cohort support.",
+      href: "/tutoring",
+      accent: "violet",
+      icon: "graduation",
+      order: 2,
+    },
+  ],
+  featuredProjects: [
+    {
+      id: "passmartshop-storefront",
+      title: "Passmartshop (Storefront)",
+      description: "Customer-facing e‑commerce website with search, product pages, and checkout UX.",
+      images: ["/projects/passmartshop-storefront.png", "/projects/passmartshop-product.png"],
+      badges: [
+        { label: "Completed", tone: "green" },
+        { label: "Web", tone: "slate" },
+      ],
+      links: [{ label: "Live", href: "https://passmartshop.com" }],
+      order: 0,
+    },
+    {
+      id: "passmartshop-admin",
+      title: "Passmartshop Admin",
+      description: "Dark admin panels for managing the shop: products, categories, orders, and bulk tools.",
+      images: ["/projects/passmartshop-admin-dashboard.png", "/projects/passmartshop-admin-products.png"],
+      badges: [
+        { label: "Completed", tone: "green" },
+        { label: "Admin", tone: "amber" },
+      ],
+      links: [{ label: "Admin", href: "https://passmartshop-admin.web.app/admin" }],
+      order: 1,
+    },
+    {
+      id: "djmovies",
+      title: "DJMovies App",
+      description: "Movie catalog + player experience with admin controls for collections and content.",
+      images: ["/projects/djmovies-home.png", "/projects/djmovies-player.png"],
+      badges: [
+        { label: "Completed", tone: "green" },
+        { label: "Mobile", tone: "blue" },
+      ],
+      links: [],
+      order: 2,
+    },
+  ],
+  devSkills: [
+    "React + TypeScript",
+    "Node.js + Express",
+    "Firebase / Firestore",
+    "Tailwind CSS",
+    "Android (Kotlin)",
+    "Python + FastAPI",
+    "CI/CD & Hosting",
+  ],
+  photoGallery: buildDefaultPhotoGallery(),
+  photoHeroSlides: DEFAULT_PHOTO_HERO_SLIDES,
+  photoCategories: DEFAULT_PHOTO_CATEGORIES,
+  videoGallery: DEFAULT_VIDEO_GALLERY,
+  videoCategories: DEFAULT_VIDEO_CATEGORIES,
+  rateCardGroups: DEFAULT_RATE_CARD_GROUPS,
+  processSteps: DEFAULT_PROCESS_STEPS,
+  photographySettings: DEFAULT_PHOTOGRAPHY_SETTINGS,
+};

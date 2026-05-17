@@ -1,0 +1,57 @@
+.admin-portfolio-root {
+  --admin-bg: #08080c;
+  --admin-surface: #12121a;
+  --admin-surface-2: #1a1a26;
+  --admin-border: rgba(255, 255, 255, 0.1);
+  --admin-text: #f4f4f5;
+  --admin-muted: #a1a1aa;
+  --admin-dim: #d4d4d8;
+  background: var(--admin-bg);
+  color: var(--admin-text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.admin-portfolio-root * {
+  box-sizing: border-box;
+}
+
+.admin-input,
+.admin-portfolio-root input:not([type="checkbox"]):not([type="radio"]),
+.admin-portfolio-root textarea,
+.admin-portfolio-root select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border-radius: 0.5rem;
+  border: 1px solid var(--admin-border);
+  background: #0a0a0f !important;
+  color: var(--admin-text) !important;
+  font-size: 0.875rem;
+}
+
+.admin-portfolio-root input::placeholder,
+.admin-portfolio-root textarea::placeholder {
+  color: #71717a !important;
+}
+
+.admin-portfolio-root label {
+  color: var(--admin-dim) !important;
+  font-weight: 500;
+}
+
+.admin-portfolio-root .text-muted-foreground {
+  color: var(--admin-muted) !important;
+}
+
+.admin-hint {
+  color: var(--admin-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.admin-prose {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}

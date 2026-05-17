@@ -3,8 +3,14 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { NclexRouteFallback } from "@/components/nclex/NclexRouteFallback";
 import { FirebaseAuthProvider } from "./contexts/FirebaseAuthContext";
+import { SiteContentProvider } from "./contexts/SiteContentContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Portfolio from "./Portfolio";
+import HomePage from "./pages/tech-media/HomePage";
+import PhotographyPage from "./pages/tech-media/PhotographyPage";
+import DevelopmentPage from "./pages/tech-media/DevelopmentPage";
+import TutoringPage from "./pages/tech-media/TutoringPage";
+import ContactPage from "./pages/tech-media/ContactPage";
 import NclexTutoringPage from "./pages/NclexTutoringPage";
 import StudentPendingApprovalPage from "./pages/student/nclex/StudentPendingApprovalPage";
 import StudentDisabledPage from "./pages/student/nclex/StudentDisabledPage";
@@ -26,6 +32,7 @@ import AdminPresentations from "./pages/tutor/nclex/AdminPresentations";
 import AdminStudyGuides from "./pages/tutor/nclex/AdminStudyGuides";
 import AdminNclexNotes from "./pages/tutor/nclex/AdminNclexNotes";
 import WrittenQnsPage from "./pages/WrittenQnsPage";
+import PortfolioAdminPage from "./pages/admin/PortfolioAdminPage";
 import { Route, Switch } from "wouter";
 import { StudentTutoringFloatingDock } from "@/components/tutoring/StudentTutoringFloatingDock";
 
@@ -51,15 +58,22 @@ const StudentTutoringSessionDetail = lazy(() => import("./pages/student/nclex/St
 
 function App() {
   return (
-    <ThemeProvider defaultTheme="light">
+    <ThemeProvider defaultTheme="dark">
       <FirebaseAuthProvider>
+        <SiteContentProvider>
         <TooltipProvider>
           <Toaster />
           <Suspense fallback={<NclexRouteFallback />}>
           <Switch>
             <Route path="/written-qns/:step" component={WrittenQnsPage} />
             <Route path="/written-qns" component={WrittenQnsPage} />
-            <Route path="/tutoring" component={NclexTutoringPage} />
+            <Route path="/admin" component={PortfolioAdminPage} />
+            <Route path="/photography" component={PhotographyPage} />
+            <Route path="/development" component={DevelopmentPage} />
+            <Route path="/tutoring" component={TutoringPage} />
+            <Route path="/contact" component={ContactPage} />
+            <Route path="/nclex-platform" component={NclexTutoringPage} />
+            <Route path="/portfolio" component={Portfolio} />
             <Route path="/tutor/nclex/review/:studentId/:sessionId" component={ReviewDashboard} />
             <Route path="/tutor/nclex/questions" component={QuestionManagement} />
             <Route path="/tutor/nclex/quizzes" component={QuizManagement} />
@@ -98,12 +112,13 @@ function App() {
             <Route path="/student/nclex/tutoring/:sessionId" component={StudentTutoringSessionDetail} />
             <Route path="/student/nclex/dashboard" component={StudentNCLEXDashboard} />
             <Route path="/student/nclex" component={StudentNclexHub} />
-            <Route path="/" component={Portfolio} />
-            <Route component={Portfolio} />
+            <Route path="/" component={HomePage} />
+            <Route component={HomePage} />
           </Switch>
           <StudentTutoringFloatingDock />
           </Suspense>
         </TooltipProvider>
+        </SiteContentProvider>
       </FirebaseAuthProvider>
     </ThemeProvider>
   );
