@@ -1,7 +1,7 @@
 import { ChevronDown, Minus, Plus, Volume2, VolumeX, Wallet, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useBlockGamePlayer } from "@/contexts/BlockGamePlayerContext";
-import { MAX_STAKE_KES, MAX_WALLET_BALANCE_KES, MIN_STAKE_KES } from "@/lib/game/constants";
+import { MAX_STAKE_KES, MIN_STAKE_KES } from "@/lib/game/constants";
 import { isValidTargetBalance, minTargetBalance } from "@/lib/game/targetMode";
 import { scrollInputIntoView } from "@/hooks/usePhoneKeyboardInset";
 import { Button } from "@/components/ui/button";
@@ -282,7 +282,7 @@ export function PlayerWalletBar({ phoneMode = false }: { phoneMode?: boolean }) 
   } = useBlockGamePlayer();
   const [fundOpen, setFundOpen] = useState(false);
   const [walletExpanded, setWalletExpanded] = useState(false);
-  const shownBalance = Math.min(displayBalance, MAX_WALLET_BALANCE_KES);
+  const shownBalance = displayBalance;
   const needsFunds = accountBalance < MIN_STAKE_KES && status !== "playing";
 
   useEffect(() => {

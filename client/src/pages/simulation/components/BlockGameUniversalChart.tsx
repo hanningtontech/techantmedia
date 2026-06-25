@@ -1,5 +1,6 @@
 import { ForexCandlestickChart } from "./ForexCandlestickChart";
 import { useUniversalLiveChart } from "@/hooks/useUniversalLiveChart";
+import { BlockGameGridLoader } from "@/pages/game/components/BlockGameGridLoader";
 import { cn } from "@/lib/utils";
 
 /**
@@ -15,7 +16,18 @@ export function BlockGameUniversalChart({ className }: { className?: string }) {
     setTimeframeId,
     liveStats,
     isLive,
+    archiveReady,
   } = useUniversalLiveChart();
+
+  if (!archiveReady && chartHistory.length < 2) {
+    return (
+      <BlockGameGridLoader
+        label="Loading live chart…"
+        className={cn("h-full min-h-[240px]", className)}
+        darkBackdrop
+      />
+    );
+  }
 
   return (
     <div className={cn("flex h-full min-h-0 w-full flex-col bg-[#131722] text-[#d1d4dc]", className)}>

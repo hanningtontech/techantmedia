@@ -11,6 +11,13 @@ import {
 } from "firebase/firestore";
 import { tryGetFirestoreDb } from "@/lib/firebase";
 import { BLOCK_GAME_PLAYERS_COLLECTION } from "./blockGamePlayersFirestore";
+import {
+  applyRoundToStats,
+  normalizePlayerRoundDoc,
+  parsePlayerStatsFromFirestore,
+  playerStatsToFirestore,
+  EMPTY_PLAYER_STATS,
+} from "./playerRoundSchema";
 import type { GameEconomics } from "@/lib/simulation/types";
 import type { SessionOutcome } from "@/lib/simulation/types";
 
@@ -154,6 +161,8 @@ export async function recordPlayerRound(args: {
     );
 
     if (!playerSnap.exists()) {
+      const stats = { ...EMPTY_PLAYER_STATS };
+      applyRoundToStats(stats, round);
       tx.set(playerDocRef, {
         uid: args.uid,
         userEmail: args.userEmail,
@@ -162,14 +171,12 @@ export async function recordPlayerRound(args: {
         registeredAtIso: round.playedAt,
         lastSeenAt: playedAtMs,
         lastPlayedAt: playedAtMs,
-        totalRounds: 1,
-        totalStaked: round.userStake,
-        totalPayout: round.userPayout,
-        totalUserProfit: round.userProfit,
-        totalAdminRevenue: round.adminRevenue,
+        ...playerStatsToFirestore(stats),
       });
     } else {
       const p = playerSnap.data();
+      const stats = parsePlayerStatsFromFirestore(p);
+      applyRoundToStats(stats, round);
       tx.set(
         playerDocRef,
         {
@@ -177,11 +184,7 @@ export async function recordPlayerRound(args: {
           userName: args.userName,
           lastSeenAt: playedAtMs,
           lastPlayedAt: playedAtMs,
-          totalRounds: (p.totalRounds ?? 0) + 1,
-          totalStaked: (p.totalStaked ?? 0) + round.userStake,
-          totalPayout: (p.totalPayout ?? 0) + round.userPayout,
-          totalUserProfit: (p.totalUserProfit ?? 0) + round.userProfit,
-          totalAdminRevenue: (p.totalAdminRevenue ?? 0) + round.adminRevenue,
+          ...playerStatsToFirestore(stats),
         },
         { merge: true },
       );
@@ -193,6 +196,7 @@ export async function recordPlayerRound(args: {
 export function subscribePlayerRoundsAdmin(
   listener: (rounds: BlockGamePlayerRoundDoc[]) => void,
   sinceMs = Date.now() - LOOKBACK_MS,
+  onError?: (error: Error) => void,
 ): Unsubscribe {
   const col = roundsCol();
   if (!col) {
@@ -209,10 +213,14 @@ export function subscribePlayerRoundsAdmin(
   return onSnapshot(
     q,
     (snap) => {
-      const list = snap.docs.map((d) => ({ ...(d.data() as BlockGamePlayerRoundDoc), id: d.id }));
+      const list = snap.docs.map((d) => normalizePlayerRoundDoc(d.id, d.data()));
       listener(list);
     },
-    () => listener([]),
+    (err) => {
+      console.error("subscribePlayerRoundsAdmin failed:", err);
+      onError?.(err);
+      listener([]);
+    },
   );
 }
 

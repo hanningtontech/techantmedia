@@ -69,6 +69,12 @@
   overflow: hidden;
 }
 
+@media (min-width: 1024px) {
+  .game-board-tray {
+    transition: border-color 0.22s ease, box-shadow 0.22s ease;
+  }
+}
+
 .game-board-tray--edge {
   width: 100%;
   display: flex;

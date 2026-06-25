@@ -3,6 +3,7 @@ import { useBlockGamePlayer } from "@/contexts/BlockGamePlayerContext";
 import { usePhoneGameLayout } from "@/hooks/usePhoneGameLayout";
 import { cn } from "@/lib/utils";
 import { PlayerWalletBar } from "./PlayerWalletBar";
+import { GameSalutation } from "./GameSalutation";
 import { PlayerGameGrid } from "./PlayerGameGrid";
 import { PlayerPlayControls } from "./PlayerPlayControls";
 import { PlayerSessionTable } from "./PlayerSessionTable";
@@ -12,6 +13,8 @@ const LG_BREAKPOINT = 1024;
 const ROW_GAP_PX = 12;
 /** Keeps desktop grid cell size unchanged after moving controls below the board. */
 const DESKTOP_GRID_RESERVE_PX = 220;
+/** Fixed inline chart height on phone — fits x-axis inside viewport without scrolling. */
+const PHONE_INLINE_CHART_PX = 228;
 
 function useStackedLayout() {
   const [stacked, setStacked] = useState(
@@ -45,10 +48,11 @@ function PhoneGamePlayLayout() {
     const ctrlH = controlsRef.current?.getBoundingClientRect().height ?? 0;
     const safeBottom =
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue("env(safe-area-inset-bottom)")) || 0;
-    const gap = 8;
-    const avail = window.innerHeight - topH - ctrlH - gap - safeBottom;
+    const chartH = chartOpen ? PHONE_INLINE_CHART_PX + 12 : 0;
+    const gap = chartOpen ? 6 : 8;
+    const avail = window.innerHeight - topH - ctrlH - chartH - gap - safeBottom;
     setBoardMax(Math.max(80, avail));
-  }, []);
+  }, [chartOpen]);
 
   useEffect(() => {
     measureBoard();
@@ -65,18 +69,26 @@ function PhoneGamePlayLayout() {
   }, [chartOpen, measureBoard]);
 
   return (
-    <div
-      className={cn(
-        "flex h-svh max-h-svh w-full flex-col overflow-hidden",
-        chartOpen && "overflow-y-auto",
-      )}
-    >
-      <div ref={topRef} className="shrink-0 px-2 pt-2">
+    <div className="flex h-svh max-h-svh w-full flex-col overflow-hidden">
+      <div ref={topRef} className="shrink-0 space-y-1 px-2 pt-2">
+        <GameSalutation className="px-0.5" />
         <PlayerWalletBar phoneMode />
       </div>
 
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-0 py-1">
-        <PlayerGameGrid maxBoardHeight={boardMax} edgeToEdge hideHint />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-0 py-1">
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+          <PlayerGameGrid maxBoardHeight={boardMax} edgeToEdge hideHint />
+        </div>
+
+        {chartOpen && (
+          <section
+            className="mx-2 mb-1 shrink-0 overflow-hidden"
+            style={{ height: PHONE_INLINE_CHART_PX }}
+            aria-label="Session chart"
+          >
+            <PlayerChartPanel className="h-full" />
+          </section>
+        )}
       </div>
 
       <div
@@ -85,12 +97,6 @@ function PhoneGamePlayLayout() {
       >
         <PlayerPlayControls phone />
       </div>
-
-      {chartOpen && (
-        <section className="shrink-0 px-2 pb-6" aria-label="Session chart">
-          <PlayerChartPanel className="h-[min(42vh,340px)]" />
-        </section>
-      )}
     </div>
   );
 }
@@ -107,8 +113,10 @@ export function GamePlayLayout() {
   const pageRef = useRef<HTMLDivElement>(null);
   const playSectionRef = useRef<HTMLElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
+  const desktopControlsRef = useRef<HTMLDivElement>(null);
   const gridColRef = useRef<HTMLDivElement>(null);
   const [controlsBlockSize, setControlsBlockSize] = useState(isStacked ? 120 : 200);
+  const [desktopControlsHeight, setDesktopControlsHeight] = useState(100);
   const [maxBoardHeight, setMaxBoardHeight] = useState(0);
   const [gridColHeight, setGridColHeight] = useState(320);
   const isDesktopWide = !isPhone && !isStacked;
@@ -127,6 +135,18 @@ export function GamePlayLayout() {
     return () => ro.disconnect();
   }, [isStacked]);
 
+  useEffect(() => {
+    if (!isDesktopWide) return;
+    const el = desktopControlsRef.current;
+    if (!el) return;
+
+    const measure = () => setDesktopControlsHeight(el.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isDesktopWide, chartOpen, maxBoardHeight]);
+
   const measurePlayArea = useCallback(() => {
     const section = playSectionRef.current;
     if (!section) return;
@@ -134,25 +154,23 @@ export function GamePlayLayout() {
     const top = section.getBoundingClientRect().top;
     const safeBottom =
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue("env(safe-area-inset-bottom)")) || 0;
-    const bottomPad = (chartOpen ? 16 : 12) + safeBottom;
+    const bottomPad = 12 + safeBottom;
 
     let avail = window.innerHeight - top - bottomPad;
     if (isStacked) {
       avail -= controlsBlockSize + ROW_GAP_PX;
+    } else if (isDesktopWide) {
+      avail -= desktopControlsHeight + ROW_GAP_PX;
     }
 
     setMaxBoardHeight(Math.max(120, avail));
-  }, [chartOpen, controlsBlockSize, isStacked]);
+  }, [controlsBlockSize, desktopControlsHeight, isDesktopWide, isStacked]);
 
   useEffect(() => {
     const onResize = () => measurePlayArea();
     onResize();
     window.addEventListener("resize", onResize);
-    window.addEventListener("scroll", onResize, { passive: true });
-    return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("scroll", onResize);
-    };
+    return () => window.removeEventListener("resize", onResize);
   }, [measurePlayArea]);
 
   useEffect(() => {
@@ -187,11 +205,12 @@ export function GamePlayLayout() {
         "mx-auto flex w-full flex-col py-2 sm:py-3 lg:py-4",
         isDesktopWide ? "w-[80vw] max-w-[80vw] px-0" : "max-w-6xl px-3 sm:px-4 lg:gap-1",
         isPhone ? "gap-2 px-0 py-2" : "gap-0",
-        !chartOpen && cn("h-svh max-h-svh overflow-x-hidden", isPhone ? "overflow-y-auto" : "overflow-y-hidden"),
+        cn("min-h-svh overflow-x-hidden overflow-y-auto"),
       )}
     >
       <header className="mb-1 shrink-0 px-3 text-center sm:mb-1.5 sm:px-4 sm:text-left">
         <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl lg:mb-0">Block Game</h1>
+        <GameSalutation className="mt-0.5" />
         <p className="mt-0.5 hidden text-xs text-zinc-500 sm:block sm:text-sm lg:mt-1">
           Real play · KES wallet · Same fair multiplier as our simulation engine
         </p>
@@ -209,7 +228,7 @@ export function GamePlayLayout() {
           isStacked
             ? "flex-col items-stretch justify-start gap-2 overflow-x-hidden px-3"
             : isDesktopWide
-              ? "flex-1 items-start justify-center overflow-hidden"
+              ? "flex-1 items-start justify-center overflow-visible"
               : "flex-1 items-start justify-start overflow-hidden",
         )}
         aria-label="Game board"
@@ -225,7 +244,9 @@ export function GamePlayLayout() {
                 widthInsetPx={0}
                 edgeToEdge={false}
               />
-              <PlayerPlayControls layout="desktop" />
+              <div ref={desktopControlsRef} className="w-full">
+                <PlayerPlayControls layout="desktop" />
+              </div>
             </div>
             <div className="min-w-[min(100%,18rem)] flex-1 self-stretch">
               <PlayerSessionTable targetHeight={gridColHeight} />

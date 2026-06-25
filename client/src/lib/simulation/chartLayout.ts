@@ -63,7 +63,7 @@ export function computeChartLayout(width: number, height: number, priceLabelMaxC
   );
 
   const padTop = short ? (compact ? 22 : 26) : compact ? 26 : 28;
-  const padBottom = compact ? 18 : 22;
+  const padBottom = bp === "xs" ? 26 : compact ? 22 : 24;
   const padLeft = bp === "xs" ? 4 : 8;
 
   return {

@@ -412,7 +412,7 @@ service cloud.firestore {
 
     match /blockGamePlayers/{playerId} {
       allow read: if isAdmin();
-      allow create, update: if isSignedIn() && request.auth.uid == playerId;
+      allow create, update: if isAdmin() || (isSignedIn() && request.auth.uid == playerId);
       allow delete: if false;
     }
 

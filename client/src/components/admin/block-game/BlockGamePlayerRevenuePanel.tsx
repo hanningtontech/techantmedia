@@ -13,7 +13,8 @@ import {
 } from "@/lib/game/playerRevenueFirestore";
 import {
   getPlayerRevenuePeriodBounds,
-  PLAYER_REVENUE_PERIODS,
+  getPlayerRoundsQuerySinceMs,
+  PLAYER_LIST_PERIODS,
   type PlayerRevenuePeriodId,
 } from "@/lib/game/playerRevenuePeriods";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,7 @@ export function BlockGamePlayerRevenuePanel() {
   const [rounds, setRounds] = useState<BlockGamePlayerRoundDoc[]>([]);
   const [summary, setSummary] = useState<PlayerRevenueSummaryDoc | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -82,11 +84,16 @@ export function BlockGamePlayerRevenuePanel() {
   }, []);
 
   const bounds = useMemo(() => getPlayerRevenuePeriodBounds(period, now), [period, now]);
+  const querySinceMs = useMemo(() => getPlayerRoundsQuerySinceMs(period, now), [period, now]);
 
-  useEffect(
-    () => subscribePlayerRoundsAdmin(setRounds, bounds.start),
-    [bounds.start],
-  );
+  useEffect(() => {
+    setLoadError(null);
+    return subscribePlayerRoundsAdmin(
+      setRounds,
+      querySinceMs,
+      () => setLoadError("Could not load live round data. Check Firestore rules or indexes."),
+    );
+  }, [querySinceMs]);
   useEffect(() => subscribePlayerRevenueSummary(setSummary), []);
 
   const current = useMemo(
@@ -138,8 +145,14 @@ export function BlockGamePlayerRevenuePanel() {
         )}
       </div>
 
+      {loadError && (
+        <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          {loadError}
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2">
-        {PLAYER_REVENUE_PERIODS.map((p) => (
+        {PLAYER_LIST_PERIODS.map((p) => (
           <Button
             key={p.id}
             type="button"

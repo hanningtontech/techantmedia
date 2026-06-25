@@ -14,7 +14,6 @@ import {
   DEFAULT_HOUSE_EDGE,
   MAX_STAKE_KES,
   MIN_STAKE_KES,
-  MAX_WALLET_BALANCE_KES,
   PLAYER_GRID_PRESETS,
   loadGridAppearancePrefs,
   saveGridAppearancePrefs,
@@ -63,15 +62,20 @@ import {
   type FundRequestRecord,
 } from "@/lib/game/playerStorage";
 import { resolveBombRangeForPreset, type GridBombRanges, defaultBombRanges } from "@/lib/game/bombRangeSettings";
+import {
+  onPlayerRoundComplete,
+  playerCalculateMultiplier,
+  playerCashOutPayout,
+  preparePenaltyForNewGame,
+} from "@/lib/game/earlyCashOutPenalty";
 import { randomBombCountForGrid } from "@/lib/game/randomBombs";
 import {
   applyManualPick,
-  cashOutPayout,
   createBombIndices,
   finalizeManualGameEconomics,
 } from "@/lib/simulation/engine";
 import { isBombSoundMuted, playBombExplosionSound, playSafeRevealSound, preloadBombSound, setBombSoundMuted, unlockGameAudio } from "@/lib/simulation/bombEffects";
-import { calculateMultiplier, totalCells } from "@/lib/simulation/math";
+import { totalCells } from "@/lib/simulation/math";
 import type {
   CellState,
   GameConfig,
@@ -137,6 +141,7 @@ interface BlockGamePlayerState {
   setPlayerTarget: (targetBalance: number) => boolean;
   clearPlayerTarget: () => void;
   cashOut: () => void;
+  penaltyKeepFraction: number | null;
   clickCell: (index: number) => void;
   requestFund: (amount: number) => FundRequestRecord;
   dismissTargetCelebration: () => void;
@@ -155,6 +160,7 @@ interface ActiveRoundState {
   bombIndices: Set<number>;
   gameStake: number;
   currentRound: number;
+  penaltyKeepFraction: number | null;
 }
 
 interface BoardSnapshot {
@@ -230,6 +236,7 @@ export function BlockGamePlayerProvider({
     owedAmount: number;
     targetBalance: number;
   } | null>(null);
+  const [penaltyKeepFraction, setPenaltyKeepFraction] = useState<number | null>(null);
 
   const chartHistoryRef = useRef<SimChartTick[]>([]);
   const accountBeforeGameRef = useRef(0);
@@ -238,6 +245,7 @@ export function BlockGamePlayerProvider({
   const statusRef = useRef<GameStatus>("idle");
   const revealedRef = useRef<Set<number>>(new Set());
   const activeRoundRef = useRef<ActiveRoundState | null>(null);
+  const hadPenaltyThisGameRef = useRef(false);
   const bombRevealPendingRef = useRef(false);
   const bombRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -370,16 +378,16 @@ export function BlockGamePlayerProvider({
 
   const persistWallet = useCallback(
     async (balance: number, games: number, stakedDelta = 0, wonDelta = 0) => {
-      const capped = Math.min(MAX_WALLET_BALANCE_KES, Math.max(0, Math.round(balance)));
+      const normalized = Math.max(0, Math.round(balance));
       const local = loadPlayerWallet();
-      local.balance = capped;
+      local.balance = normalized;
       local.totalGames = games;
       local.totalStaked += stakedDelta;
       local.totalWon += wonDelta;
       savePlayerWallet(local);
 
       await saveBlockGameWallet(uid, {
-        balance: capped,
+        balance: normalized,
         totalGames: games,
         totalStaked: local.totalStaked,
         totalWon: local.totalWon,
@@ -445,6 +453,9 @@ export function BlockGamePlayerProvider({
         bombIndices: Array.from(bombIndices),
       };
       setSessionHistory((prev) => appendPlayerSessionRecord(uid, sessionRecord, prev));
+      onPlayerRoundComplete(uid, result.outcome, result.round, hadPenaltyThisGameRef.current);
+      hadPenaltyThisGameRef.current = false;
+      setPenaltyKeepFraction(null);
       persistWallet(result.endingAccountBalance, nextGames, economics.userStake, economics.userPayout);
       setLastResult(result);
       setRoundSettled(true);
@@ -479,12 +490,12 @@ export function BlockGamePlayerProvider({
       if (t < 1) {
         balanceAnimFrameRef.current = requestAnimationFrame(tick);
       } else {
-        const capped = Math.min(MAX_WALLET_BALANCE_KES, Math.max(0, Math.round(to)));
-        setDisplayBalance(capped);
-        setAccountBalance(capped);
+        const normalized = Math.max(0, Math.round(to));
+        setDisplayBalance(normalized);
+        setAccountBalance(normalized);
         setBalanceAnimating(false);
         balanceAnimFrameRef.current = null;
-        triggerTargetCelebration(capped);
+        triggerTargetCelebration(normalized);
       }
     };
     balanceAnimFrameRef.current = requestAnimationFrame(tick);
@@ -557,16 +568,20 @@ export function BlockGamePlayerProvider({
       setDisplayBalance((b) => b - s);
       setGameStake(s);
       const board = reshuffleBoard(effectiveGrid.rows, effectiveGrid.cols, gridPresetId, s);
+      const { keepFraction } = preparePenaltyForNewGame(uid);
+      hadPenaltyThisGameRef.current = keepFraction != null;
+      setPenaltyKeepFraction(keepFraction);
       activeRoundRef.current = {
         config: board.config,
         bombIndices: board.bombIndices,
         gameStake: s,
         currentRound: 0,
+        penaltyKeepFraction: keepFraction,
       };
       setStatus("playing");
       return true;
     },
-    [accountBalance, balanceAnimating, effectiveGrid.cols, effectiveGrid.rows, gridPresetId, reshuffleBoard, stake, status],
+    [accountBalance, balanceAnimating, effectiveGrid.cols, effectiveGrid.rows, gridPresetId, reshuffleBoard, stake, status, uid],
   );
 
   const playAgain = useCallback((): boolean => {
@@ -634,8 +649,15 @@ export function BlockGamePlayerProvider({
     if (status === "playing") {
       const active = activeRoundRef.current;
       const potential = active
-        ? accountBalance + cashOutPayout(active.config, active.currentRound, active.gameStake)
-        : accountBalance + cashOutPayout(config, currentRound, gameStake);
+        ? accountBalance +
+          playerCashOutPayout(
+            active.config,
+            active.currentRound,
+            active.gameStake,
+            active.penaltyKeepFraction,
+          )
+        : accountBalance +
+          playerCashOutPayout(config, currentRound, gameStake, penaltyKeepFraction);
       if (potential < sessionTarget) return;
     } else if (displayBalance < sessionTarget) {
       return;
@@ -643,7 +665,13 @@ export function BlockGamePlayerProvider({
     const active = activeRoundRef.current;
     const bal =
       status === "playing" && active
-        ? accountBalance + cashOutPayout(active.config, active.currentRound, active.gameStake)
+        ? accountBalance +
+          playerCashOutPayout(
+            active.config,
+            active.currentRound,
+            active.gameStake,
+            active.penaltyKeepFraction,
+          )
         : displayBalance;
     triggerTargetCelebration(bal);
   }, [
@@ -655,6 +683,7 @@ export function BlockGamePlayerProvider({
     gameStake,
     sessionTarget,
     status,
+    penaltyKeepFraction,
     triggerTargetCelebration,
   ]);
 
@@ -663,7 +692,12 @@ export function BlockGamePlayerProvider({
     if (!active || status !== "playing" || active.currentRound <= 0) return;
     const total = totalCells(active.config.rows, active.config.cols);
     revealAllCells(active.bombIndices, total);
-    const payout = cashOutPayout(active.config, active.currentRound, active.gameStake);
+    const payout = playerCashOutPayout(
+      active.config,
+      active.currentRound,
+      active.gameStake,
+      active.penaltyKeepFraction,
+    );
     const mult = active.gameStake > 0 ? payout / active.gameStake : 0;
     settleRound("cashed_out", payout, active.currentRound, mult, "cashed_out");
   }, [revealAllCells, settleRound, status]);
@@ -683,6 +717,17 @@ export function BlockGamePlayerProvider({
         active.currentRound,
         active.gameStake,
       );
+
+      let multiplier = outcome.multiplier;
+      let balanceAfter = outcome.balanceAfter;
+      if (!outcome.isBomb && active.penaltyKeepFraction != null) {
+        multiplier = playerCalculateMultiplier(
+          active.config,
+          outcome.round,
+          active.penaltyKeepFraction,
+        );
+        balanceAfter = active.gameStake * multiplier;
+      }
 
       if (outcome.isBomb) {
         const total = totalCells(active.config.rows, active.config.cols);
@@ -727,13 +772,13 @@ export function BlockGamePlayerProvider({
       playSafeRevealSound();
       active.currentRound = outcome.round;
       setCurrentRound(outcome.round);
-      setRoundBalance(outcome.balanceAfter);
-      setLastMultiplier(outcome.multiplier);
+      setRoundBalance(balanceAfter);
+      setLastMultiplier(multiplier);
 
       const total = totalCells(active.config.rows, active.config.cols);
       const maxSafeRounds = total - active.config.bombs;
       if (outcome.round >= maxSafeRounds) {
-        settleRound("won", outcome.balanceAfter, outcome.round, outcome.multiplier, "won");
+        settleRound("won", balanceAfter, outcome.round, multiplier, "won");
       }
     },
     [accountBalance, recordCompletedGame, revealAllCells, revealCell, settleRound],
@@ -891,6 +936,7 @@ export function BlockGamePlayerProvider({
     canResetAfterRound,
     sessionTarget,
     targetCelebration,
+    penaltyKeepFraction,
     formatKes,
     setGridPreset,
     setGridColorTheme,
@@ -923,8 +969,9 @@ export function useBlockGamePlayer() {
   return ctx;
 }
 
-/** Current multiplier if player cashed out now (for UI). */
+/** Current multiplier if player cashed out now (for UI). Applies live early-cash-out penalty when active. */
 export function useNextMultiplier(config: GameConfig, round: number): number {
+  const ctx = useBlockGamePlayer();
   if (round <= 0) return 0;
-  return calculateMultiplier(config, round);
+  return playerCalculateMultiplier(config, round, ctx?.penaltyKeepFraction ?? null);
 }

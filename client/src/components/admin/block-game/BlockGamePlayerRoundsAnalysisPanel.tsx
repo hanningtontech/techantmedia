@@ -11,7 +11,8 @@ import {
 } from "@/lib/game/playerRevenueFirestore";
 import {
   getPlayerRevenuePeriodBounds,
-  PLAYER_REVENUE_PERIODS,
+  getPlayerRoundsQuerySinceMs,
+  PLAYER_LIST_PERIODS,
   type PlayerRevenuePeriodId,
 } from "@/lib/game/playerRevenuePeriods";
 import { cn } from "@/lib/utils";
@@ -116,6 +117,7 @@ export function BlockGamePlayerRoundsAnalysisPanel({
   const [now, setNow] = useState(() => Date.now());
 
   const bounds = useMemo(() => getPlayerRevenuePeriodBounds(period, now), [period, now]);
+  const querySinceMs = useMemo(() => getPlayerRoundsQuerySinceMs(period, now), [period, now]);
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -123,8 +125,8 @@ export function BlockGamePlayerRoundsAnalysisPanel({
   }, []);
 
   useEffect(
-    () => subscribePlayerRoundsAdmin(setRounds, bounds.start),
-    [bounds.start],
+    () => subscribePlayerRoundsAdmin(setRounds, querySinceMs),
+    [querySinceMs],
   );
 
   const analysis = useMemo(
@@ -155,7 +157,7 @@ export function BlockGamePlayerRoundsAnalysisPanel({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {PLAYER_REVENUE_PERIODS.map((p) => (
+        {PLAYER_LIST_PERIODS.map((p) => (
           <Button
             key={p.id}
             type="button"

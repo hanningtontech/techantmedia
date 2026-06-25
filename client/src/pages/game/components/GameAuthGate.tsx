@@ -9,18 +9,26 @@ import { Label } from "@/components/ui/label";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { formatAuthOrFirestoreError } from "@/lib/authErrorMessage";
 import { ensureBlockGamePlayerRegistered } from "@/lib/game/blockGamePlayersFirestore";
+import { BlockGameGridLoader } from "./BlockGameGridLoader";
 import { toast } from "sonner";
 
 function RegisterGamePlayerOnMount() {
   const { user, profile } = useFirebaseAuth();
   useEffect(() => {
     if (!user) return;
+    const userEmail = user.email ?? profile?.email ?? "";
+    const userName =
+      profile?.name?.trim() ||
+      profile?.username?.trim() ||
+      user.displayName?.trim() ||
+      userEmail.split("@")[0] ||
+      "";
     void ensureBlockGamePlayerRegistered({
       uid: user.uid,
-      userEmail: user.email ?? profile?.email ?? "",
-      userName: profile?.name ?? user.displayName ?? "",
+      userEmail,
+      userName,
     }).catch(() => {});
-  }, [user, profile?.email, profile?.name]);
+  }, [user, profile?.email, profile?.name, profile?.username]);
   return null;
 }
 
@@ -53,11 +61,7 @@ export function GameAuthGate({ children }: { children: React.ReactNode }) {
   }
 
   if (loading) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-[#06060a] text-violet-400">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
+    return <BlockGameGridLoader label="Loading game…" />;
   }
 
   const onGoogle = async () => {

@@ -4,9 +4,14 @@ import {
   subscribeBlockGameSettings,
   subscribeLiveChart,
   loadLiveChartSnapshot,
-  loadFullLiveChartHistory,
   type LiveChartSnapshot,
 } from "@/lib/game/blockGameFirestore";
+import {
+  getFullLiveChartHistoryCached,
+  mergeTailIntoArchiveCache,
+  peekLiveChartArchiveCache,
+  shouldRefreshFullLiveChartArchive,
+} from "@/lib/game/liveChartCache";
 import {
   hasSavedChartInterval,
   loadChartInterval,
@@ -30,7 +35,7 @@ import type { SimCandle } from "@/lib/simulation/candleSeries";
 import { useChartTickReplay, type ChartFeedSource } from "@/hooks/useChartTickReplay";
 
 const LIVE_IDLE_MS = 12_000;
-const SOFT_REFRESH_MS = 5_000;
+const SOFT_REFRESH_MS = 12_000;
 const SIM_FAST_POLL_MS = 400;
 
 interface MergedFeed {
@@ -103,15 +108,23 @@ function mergeChartFeeds(
   };
 }
 
-/** Soft-merge chart history — extend only, no flicker on refresh. */
 function mergeChartHistorySoft(prev: SimChartTick[], incoming: SimChartTick[]): SimChartTick[] {
   return mergeLiveChartTicks(prev, incoming);
+}
+
+function tailGameIndexFromSnapshot(snap: LiveChartSnapshot | null): number {
+  const h = snap?.chartHistory;
+  if (!h?.length) return 0;
+  return h[h.length - 1]!.gameIndex;
 }
 
 /** Same feed + UI as /simulation chart (`ForexCandlestickChart` via `BlockGameUniversalChart`). */
 export function useUniversalLiveChart() {
   const [firestore, setFirestore] = useState<LiveChartSnapshot | null>(null);
-  const [archivedHistory, setArchivedHistory] = useState<SimChartTick[]>([]);
+  const [archivedHistory, setArchivedHistory] = useState<SimChartTick[]>(() =>
+    peekLiveChartArchiveCache(),
+  );
+  const [archiveReady, setArchiveReady] = useState(() => peekLiveChartArchiveCache().length > 0);
   const [simSession, setSimSession] = useState<SimChartSessionSnapshot | null>(() =>
     readSimChartSessionSnapshot(),
   );
@@ -129,7 +142,15 @@ export function useUniversalLiveChart() {
   useEffect(() => subscribeBlockGameSettings((s) => setHouseEdge(s.houseEdge)), []);
 
   useEffect(() => {
-    void loadFullLiveChartHistory().then(setArchivedHistory);
+    let cancelled = false;
+    void getFullLiveChartHistoryCached().then((full) => {
+      if (cancelled || full.length === 0) return;
+      setArchivedHistory(full);
+      setArchiveReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -151,9 +172,22 @@ export function useUniversalLiveChart() {
             chartHistory: mergeChartHistorySoft(prev.chartHistory, snap.chartHistory),
           };
         });
+
+        const tailIdx = tailGameIndexFromSnapshot(snap);
+        if (shouldRefreshFullLiveChartArchive(tailIdx)) {
+          const full = await getFullLiveChartHistoryCached({ tailGameIndex: tailIdx });
+          if (full.length > 0) {
+            setArchivedHistory(full);
+            setArchiveReady(true);
+          }
+        } else if (snap.chartHistory.length > 0) {
+          const merged = mergeTailIntoArchiveCache(snap.chartHistory);
+          if (merged.length > 0) {
+            setArchivedHistory(merged);
+            setArchiveReady(true);
+          }
+        }
       }
-      const full = await loadFullLiveChartHistory();
-      if (full.length > 0) setArchivedHistory(full);
 
       await loadBlockGameSettings().then((s) => setHouseEdge(s.houseEdge)).catch(() => {});
 
@@ -279,6 +313,7 @@ export function useUniversalLiveChart() {
     isLive: chartLive,
     liveCandles,
     liveAdminCandles,
+    archiveReady,
   };
 }
 

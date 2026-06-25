@@ -29,14 +29,22 @@ function GamePlayShell() {
 }
 
 function GamePlayRoot() {
-  const { user } = useFirebaseAuth();
+  const { user, profile } = useFirebaseAuth();
   if (!user) return null;
+
+  const userEmail = user.email ?? profile?.email ?? "";
+  const userName =
+    profile?.name?.trim() ||
+    profile?.username?.trim() ||
+    user.displayName?.trim() ||
+    userEmail.split("@")[0] ||
+    "Player";
 
   return (
     <BlockGamePlayerProvider
       uid={user.uid}
-      userEmail={user.email ?? ""}
-      userName={user.displayName ?? user.email ?? "Player"}
+      userEmail={userEmail}
+      userName={userName}
     >
       <GamePlayShell />
     </BlockGamePlayerProvider>

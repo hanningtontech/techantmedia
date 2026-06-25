@@ -1,7 +1,7 @@
-import { FREE_STARTING_BALANCE_KES, MAX_WALLET_BALANCE_KES } from "./constants";
+import { FREE_STARTING_BALANCE_KES } from "./constants";
 
 export function clampWalletBalance(balance: number): number {
-  return Math.min(MAX_WALLET_BALANCE_KES, Math.max(0, Math.round(balance)));
+  return Math.max(0, Math.round(balance));
 }
 
 const WALLET_KEY = "block-game-player-wallet-v1";

@@ -10,14 +10,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { computePlayerOutcomeStats } from "@/lib/game/adminPlayerRoundAnalysis";
 import {
+  fetchPlayerRoundsForPeriod,
   fetchPlayerRoundsPage,
   type BlockGamePlayerDoc,
 } from "@/lib/game/blockGamePlayersFirestore";
 import { formatKes } from "@/lib/game/formatKes";
 import type { BlockGamePlayerRoundDoc } from "@/lib/game/playerRevenueFirestore";
+import { filterRoundsByPeriod } from "@/lib/game/playerRoundSchema";
 import {
   getPlayerRevenuePeriodBounds,
-  PLAYER_REVENUE_PERIODS,
+  PLAYER_DETAIL_PERIODS,
   type PlayerRevenuePeriodId,
 } from "@/lib/game/playerRevenuePeriods";
 import { cn } from "@/lib/utils";
@@ -118,17 +120,59 @@ export function BlockGamePlayerDetailDialog({
   player,
   open,
   onOpenChange,
-  initialPeriod = "month",
+  initialPeriod = "all",
 }: Props) {
   const [period, setPeriod] = useState<PlayerRevenuePeriodId>(initialPeriod);
-  const [rounds, setRounds] = useState<BlockGamePlayerRoundDoc[]>([]);
+  const [loadedRounds, setLoadedRounds] = useState<BlockGamePlayerRoundDoc[]>([]);
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
 
   const bounds = useMemo(() => getPlayerRevenuePeriodBounds(period, now), [period, now]);
+
+  const periodRounds = useMemo(
+    () => filterRoundsByPeriod(loadedRounds, bounds.start, bounds.end),
+    [loadedRounds, bounds.start, bounds.end],
+  );
+
+  const periodStats = useMemo(() => computePlayerOutcomeStats(periodRounds), [periodRounds]);
+
+  const lifetimeStats = useMemo(() => {
+    if (!player) return null;
+    const s = player.stats;
+    return {
+      rounds: s.rounds,
+      wins: s.wins,
+      losses: s.losses,
+      userNet: s.userProfit,
+      staked: s.staked,
+      adminNet: s.adminRevenue,
+    };
+  }, [player]);
+
+  const displayStats =
+    period === "all" && lifetimeStats && periodRounds.length === 0 && !loading
+      ? {
+          totalRounds: lifetimeStats.rounds,
+          wins: lifetimeStats.wins,
+          losses: lifetimeStats.losses,
+          userNet: lifetimeStats.userNet,
+          totalStaked: lifetimeStats.staked,
+          adminNet: lifetimeStats.adminNet,
+          fromProfile: true,
+        }
+      : {
+          totalRounds: periodStats.totalRounds,
+          wins: periodStats.wins,
+          losses: periodStats.losses,
+          userNet: periodStats.userNet,
+          totalStaked: periodStats.totalStaked,
+          adminNet: periodStats.adminNet,
+          fromProfile: false,
+        };
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -139,41 +183,53 @@ export function BlockGamePlayerDetailDialog({
     if (open) setPeriod(initialPeriod);
   }, [open, initialPeriod]);
 
-  const loadPage = useCallback(
-    async (reset: boolean) => {
-      if (!player) return;
-      if (reset) {
-        setLoading(true);
-        setRounds([]);
-        setLastDoc(null);
-        setHasMore(false);
-      } else {
-        setLoadingMore(true);
-      }
-      try {
-        const result = await fetchPlayerRoundsPage(player.uid, {
-          sinceMs: bounds.start,
-          untilMs: bounds.end,
-          afterDoc: reset ? null : lastDoc,
-        });
-        setRounds((prev) => (reset ? result.rounds : [...prev, ...result.rounds]));
+  const loadInitial = useCallback(async () => {
+    if (!player) return;
+    setLoading(true);
+    setFetchError(null);
+    setLoadedRounds([]);
+    setLastDoc(null);
+    setHasMore(false);
+    try {
+      if (period === "all") {
+        const result = await fetchPlayerRoundsPage(player.uid, {});
+        setLoadedRounds(result.rounds);
         setLastDoc(result.lastDoc);
         setHasMore(result.hasMore);
-      } finally {
-        setLoading(false);
-        setLoadingMore(false);
+      } else {
+        const result = await fetchPlayerRoundsForPeriod(player.uid, bounds.start, bounds.end);
+        setLoadedRounds(result.rounds);
+        setLastDoc(result.lastDoc);
+        setHasMore(result.hasMore);
       }
-    },
-    [player, bounds.start, bounds.end, lastDoc],
-  );
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : "Failed to load rounds.");
+    } finally {
+      setLoading(false);
+    }
+  }, [player, period, bounds.start, bounds.end]);
+
+  const loadMore = useCallback(async () => {
+    if (!player || !hasMore) return;
+    setLoadingMore(true);
+    setFetchError(null);
+    try {
+      const result = await fetchPlayerRoundsPage(player.uid, { afterDoc: lastDoc });
+      setLoadedRounds((prev) => [...prev, ...result.rounds]);
+      setLastDoc(result.lastDoc);
+      setHasMore(result.hasMore);
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : "Failed to load more rounds.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [player, hasMore, lastDoc]);
 
   useEffect(() => {
     if (!open || !player) return;
-    void loadPage(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when player or period window changes
-  }, [open, player?.uid, bounds.start, bounds.end]);
+    void loadInitial();
+  }, [open, player?.uid, period, bounds.start, bounds.end, loadInitial]);
 
-  const periodStats = useMemo(() => computePlayerOutcomeStats(rounds), [rounds]);
   const displayName = player?.userName || player?.userEmail || player?.uid.slice(0, 12) || "Player";
 
   return (
@@ -213,7 +269,7 @@ export function BlockGamePlayerDetailDialog({
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="shrink-0 space-y-4 border-b border-white/10 px-6 py-4">
               <div className="flex flex-wrap gap-2">
-                {PLAYER_REVENUE_PERIODS.map((p) => (
+                {PLAYER_DETAIL_PERIODS.map((p) => (
                   <Button
                     key={p.id}
                     type="button"
@@ -232,35 +288,56 @@ export function BlockGamePlayerDetailDialog({
               </div>
 
               <p className="text-xs text-zinc-500">
-                {bounds.label} · Lifetime {player.totalRounds.toLocaleString()} rounds · Player net{" "}
-                <span className={player.totalUserProfit >= 0 ? "text-emerald-400" : "text-red-400"}>
-                  {formatKes(player.totalUserProfit)}
+                {bounds.label} · Lifetime {player.stats.rounds.toLocaleString()} rounds · Player net{" "}
+                <span className={player.stats.userProfit >= 0 ? "text-emerald-400" : "text-red-400"}>
+                  {formatKes(player.stats.userProfit)}
+                </span>
+                {" · "}House net{" "}
+                <span className={player.stats.adminRevenue >= 0 ? "text-emerald-400" : "text-red-400"}>
+                  {formatKes(player.stats.adminRevenue)}
                 </span>
               </p>
 
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                <StatChip label="Rounds loaded" value={periodStats.totalRounds.toLocaleString()} />
+              {displayStats.fromProfile && (
+                <p className="text-xs text-amber-400/90">
+                  Round documents are not in Firestore yet — showing lifetime totals from the player profile
+                  (synced from wallet). New games will appear here as individual rounds.
+                </p>
+              )}
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                <StatChip label="Rounds" value={displayStats.totalRounds.toLocaleString()} />
                 <StatChip
                   label="Wins / losses"
-                  value={`${periodStats.wins} / ${periodStats.losses}`}
+                  value={`${displayStats.wins} / ${displayStats.losses}`}
                 />
                 <StatChip
                   label="Player net"
-                  value={formatKes(periodStats.userNet)}
-                  tone={periodStats.userNet >= 0 ? "good" : "bad"}
+                  value={formatKes(displayStats.userNet)}
+                  tone={displayStats.userNet >= 0 ? "good" : "bad"}
                 />
-                <StatChip label="Staked" value={formatKes(periodStats.totalStaked)} />
+                <StatChip
+                  label="House net"
+                  value={formatKes(displayStats.adminNet)}
+                  tone={displayStats.adminNet >= 0 ? "good" : "bad"}
+                />
+                <StatChip label="Staked" value={formatKes(displayStats.totalStaked)} />
               </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto px-6 py-4">
+              {fetchError && (
+                <p className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                  {fetchError}
+                </p>
+              )}
               {loading ? (
                 <div className="flex items-center justify-center py-16 text-violet-400">
                   <Loader2 className="h-8 w-8 animate-spin" />
                 </div>
               ) : (
                 <>
-                  <RoundsTable rounds={rounds} />
+                  <RoundsTable rounds={periodRounds} />
                   {hasMore && (
                     <div className="mt-4 flex justify-center">
                       <Button
@@ -268,7 +345,7 @@ export function BlockGamePlayerDetailDialog({
                         variant="outline"
                         className="border-white/15 text-zinc-300"
                         disabled={loadingMore}
-                        onClick={() => void loadPage(false)}
+                        onClick={() => void loadMore()}
                       >
                         {loadingMore ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />

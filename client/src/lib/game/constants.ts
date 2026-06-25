@@ -23,9 +23,8 @@ export {
 } from "./gridThemes";
 
 export const FREE_STARTING_BALANCE_KES = 10;
-export const MAX_WALLET_BALANCE_KES = 9999;
 export const MIN_STAKE_KES = 5;
-export const MAX_STAKE_KES = 9000;
+export const MAX_STAKE_KES = 9999;
 export const BOMB_PCT_MIN = 0.3;
 export const BOMB_PCT_MAX = 0.55;
 

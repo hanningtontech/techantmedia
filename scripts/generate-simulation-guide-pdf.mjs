@@ -56,6 +56,7 @@ const SECTIONS = [
       "SESSION HISTORY: Desktop shows a table beside the grid. Phone: Settings → View session history (card list).",
       "FULL HISTORY PAGE: /game/history — every round in a scrollable table.",
       "CHART PANEL: Minimized strip or expanded candlestick chart — same live feed as /game/chart.",
+      "EARLY CASH-OUT ADJUSTMENT (live /game only): If you repeatedly cash out after only 1–2 safe picks, the game may temporarily reduce multipliers on some future rounds until you play longer rounds again. Simulation is not affected.",
     ],
   },
   {
@@ -110,6 +111,12 @@ const SECTIONS = [
       "Payout if you cash out at round r:",
       "Payout(r) = S × M(r)",
       "Potential balance while playing = account balance (after stake deducted) + Payout(r).",
+      "LIVE /GAME EARLY CASH-OUT ADJUSTMENT (not used in /simulation):",
+      "If a player cashes out at round 1 or 2 for two consecutive games, a penalty cycle may start.",
+      "For the next 4–8 games (random), some rounds use a reduced multiplier — never on back-to-back games.",
+      "Reduction trims 50–70% of the profit above 1×. Example: fair 1.5× → about 1.2× (0.3 less on the bonus).",
+      "Formula: M_adj = 1 + (M_fair − 1) × keep, where keep is random between 0.3 and 0.5.",
+      "The cycle ends when the player stops consecutive 1–2 round cash-outs (e.g. plays deeper or hits a bomb).",
     ],
   },
   {
@@ -276,6 +283,8 @@ const SECTIONS = [
       "PICK(cell): if bomb → payout=0, lost. Else round++. potential = S × M(round).",
       "  If round = all safe cells → won, payout = potential. Else continue.",
       "WITHDRAW: if round ≥ 1 → payout = S × M(round), status = cashed_out.",
+      "EARLY CASH-OUT CHECK (/game): if last outcomes were cash-out at round ≤ 2, schedule 4–8 penalized games (gapped).",
+      "PENALTY MULTIPLIER: M_adj = 1 + (M_fair−1)×keep, keep ∈ [0.3,0.5]. Clear penalty when pattern stops.",
       "RECORD: net = payout − S. Update wallet. Append session row. Push chart tick.",
       "MULTIPLIER(round): P = consecutiveWinProbability(total, bombs, round). Return (1−edge)/P for linear mode.",
       "NEW ROUND: new random bomb count in [30%, 55%] of cells. New bomb positions. No carry-over.",
@@ -284,7 +293,8 @@ const SECTIONS = [
   {
     title: "22. Default Values Reference",
     body: [
-      "Production (/game): 3% house edge, linear multiplier, KES 10 free start, stake KES 5–9000.",
+      "Production (/game): 3% house edge, linear multiplier, KES 10 free start, stake KES 5–9999, no wallet cap.",
+      "Early cash-out adjustment: 2 consecutive 1–2 round withdrawals → 4–8 gapped penalized rounds (50–70% bonus trim).",
       "Default grid preset: 5×6. Bombs: 30–55% of cells per round.",
       "Simulation defaults: 5×5, 3 bombs, $10 stake, 3% edge, 5 win rounds, linear multiplier.",
       "Chart default timeframe: auto-picked from data span (~48 candles visible).",
@@ -300,6 +310,7 @@ const SECTIONS = [
       "/simulation — research dashboard, auto-sim, Excel export.",
       "Key components: BlockGamePlayerContext (live play), BlockGameSimulationContext (sim), BlockGameUniversalChart (shared chart), PlayerSessionTable / PlayerSessionPhonePanel (history).",
       "Math engine: client/src/lib/simulation/math.ts and engine.ts.",
+      "Live penalty logic: client/src/lib/game/earlyCashOutPenalty.ts (player /game only).",
       "Regenerate this PDF: node scripts/generate-simulation-guide-pdf.mjs",
     ],
   },

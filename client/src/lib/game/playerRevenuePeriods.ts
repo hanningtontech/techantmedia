@@ -1,4 +1,4 @@
-export type PlayerRevenuePeriodId = "hour" | "day" | "week" | "month";
+export type PlayerRevenuePeriodId = "hour" | "day" | "week" | "month" | "all";
 
 export interface PeriodBounds {
   start: number;
@@ -82,12 +82,37 @@ export function getPlayerRevenuePeriodBounds(
         prevLabel: "Last month",
       };
     }
+    case "all": {
+      return {
+        start: 0,
+        end: at,
+        prevStart: 0,
+        prevEnd: 0,
+        label: "All time",
+        prevLabel: "—",
+      };
+    }
   }
 }
 
 export const PLAYER_REVENUE_PERIODS: { id: PlayerRevenuePeriodId; label: string }[] = [
+  { id: "all", label: "All time" },
   { id: "hour", label: "Hour" },
   { id: "day", label: "Day" },
   { id: "week", label: "Week" },
   { id: "month", label: "Month" },
 ];
+
+export const PLAYER_DETAIL_PERIODS = PLAYER_REVENUE_PERIODS;
+
+export const PLAYER_LIST_PERIODS = PLAYER_REVENUE_PERIODS.filter((p) => p.id !== "all");
+
+/** Earliest `playedAtMs` to load for live admin revenue (includes prior period for compare). */
+export function getPlayerRoundsQuerySinceMs(
+  period: PlayerRevenuePeriodId,
+  at = Date.now(),
+  maxLookbackMs = 40 * 24 * 60 * 60 * 1000,
+): number {
+  const bounds = getPlayerRevenuePeriodBounds(period, at);
+  return Math.max(bounds.prevStart, at - maxLookbackMs);
+}

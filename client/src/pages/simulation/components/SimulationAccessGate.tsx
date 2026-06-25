@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { isSimulationUnlockedLocally, setSimulationUnlockedLocally } from "@/lib/game/blockGameFirestore";
 import { publicApiFetch } from "@/lib/api/authenticatedFetch";
+import { BlockGameGridLoader } from "@/pages/game/components/BlockGameGridLoader";
 import { toast } from "sonner";
 
 /** Private simulation — admins bypass; others need a one-time PIN from admin. */
@@ -24,11 +25,7 @@ export function SimulationAccessGate({ children }: { children: React.ReactNode }
   }, [isAdmin]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-svh items-center justify-center bg-[#08080c] text-amber-400">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
+    return <BlockGameGridLoader label="Loading simulation…" darkBackdrop className="bg-[#08080c]" />;
   }
 
   if (unlocked || isAdmin) return <>{children}</>;

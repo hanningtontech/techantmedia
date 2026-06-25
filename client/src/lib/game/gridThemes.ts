@@ -215,12 +215,12 @@ export function computePlayerGridLayout(
   const fillRatio = isMobile
     ? 1
     : side <= 4
-      ? 0.72
+      ? 0.6
       : side <= 6
-        ? 0.82
+        ? 0.68
         : side <= 8
-          ? 0.9
-          : 0.96;
+          ? 0.75
+          : 0.8;
   const targetW = isMobile
     ? maxBoardW
     : Math.min(usable, Math.max(targetByGrid, usable * fillRatio));

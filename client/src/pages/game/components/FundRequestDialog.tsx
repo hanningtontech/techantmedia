@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useBlockGamePlayer } from "@/contexts/BlockGamePlayerContext";
-import { FREE_STARTING_BALANCE_KES, MAX_WALLET_BALANCE_KES } from "@/lib/game/constants";
+import { FREE_STARTING_BALANCE_KES } from "@/lib/game/constants";
 import { formatKes } from "@/lib/game/formatKes";
 import { usePhoneGameLayout } from "@/hooks/usePhoneGameLayout";
 import { scrollInputIntoView } from "@/hooks/usePhoneKeyboardInset";
@@ -77,8 +77,7 @@ export function FundRequestDialog({
         historyKey="block-game-funds"
       >
         <p className="mb-3 text-sm leading-snug text-zinc-500">
-          New accounts start with {formatKes(FREE_STARTING_BALANCE_KES)}. Wallet max is{" "}
-          {formatKes(MAX_WALLET_BALANCE_KES)}. Top-ups require admin approval.
+          New accounts start with {formatKes(FREE_STARTING_BALANCE_KES)}. Top-ups require admin approval.
         </p>
         {form}
       </PhoneGameBottomSheet>
@@ -91,10 +90,10 @@ export function FundRequestDialog({
         <DialogHeader>
           <DialogTitle>Request account funds</DialogTitle>
           <DialogDescription className="text-zinc-400">
-            New accounts start with {formatKes(FREE_STARTING_BALANCE_KES)}. Wallet max is{" "}
-            {formatKes(MAX_WALLET_BALANCE_KES)}. Top-ups require admin approval.
+            New accounts start with {formatKes(FREE_STARTING_BALANCE_KES)}. Top-ups require admin approval.
           </DialogDescription>
         </DialogHeader>
+        {form}
       </DialogContent>
     </Dialog>
   );

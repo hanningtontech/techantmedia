@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api/authenticatedFetch";
@@ -12,6 +12,99 @@ import {
 } from "@/lib/game/bombRangeSettings";
 import { BOMB_PCT_MAX, BOMB_PCT_MIN } from "@/lib/game/constants";
 import { PLAYER_GRID_PRESETS } from "@/lib/game/gridThemes";
+import { cn } from "@/lib/utils";
+
+const PCT_MIN = 5;
+const PCT_MAX = 90;
+const PCT_STEP = 5;
+
+function clampPct(n: number): number {
+  return Math.min(PCT_MAX, Math.max(PCT_MIN, Math.round(n)));
+}
+
+function pctToDisplay(pct: number): string {
+  return String(Math.round(pct * 100));
+}
+
+function PctStepper({
+  value,
+  onChange,
+  disabled,
+  "aria-label": ariaLabel,
+}: {
+  value: number;
+  onChange: (pct: number) => void;
+  disabled?: boolean;
+  "aria-label": string;
+}) {
+  const [text, setText] = useState(() => pctToDisplay(value));
+
+  useEffect(() => {
+    setText(pctToDisplay(value));
+  }, [value]);
+
+  const commit = (raw: string) => {
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      setText(pctToDisplay(value));
+      return;
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) {
+      setText(pctToDisplay(value));
+      return;
+    }
+    onChange(clampPct(n) / 100);
+  };
+
+  const step = (delta: number) => {
+    onChange(clampPct(Math.round(value * 100) + delta) / 100);
+  };
+
+  const displayPct = Math.round(value * 100);
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        disabled={disabled || displayPct <= PCT_MIN}
+        onClick={() => step(-PCT_STEP)}
+        className="flex h-8 w-7 shrink-0 items-center justify-center rounded border border-white/10 bg-zinc-900 text-zinc-300 disabled:opacity-40"
+        aria-label={`Decrease ${ariaLabel}`}
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <input
+        type="text"
+        inputMode="numeric"
+        disabled={disabled}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            commit((e.target as HTMLInputElement).value);
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className={cn(
+          "h-8 w-14 rounded border border-white/10 bg-zinc-900 px-2 text-center text-xs tabular-nums text-zinc-100",
+          "outline-none focus:border-violet-500/60 disabled:opacity-60",
+        )}
+        aria-label={ariaLabel}
+      />
+      <button
+        type="button"
+        disabled={disabled || displayPct >= PCT_MAX}
+        onClick={() => step(PCT_STEP)}
+        className="flex h-8 w-7 shrink-0 items-center justify-center rounded border border-white/10 bg-zinc-900 text-zinc-300 disabled:opacity-40"
+        aria-label={`Increase ${ariaLabel}`}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
 
 export function BlockGameBombRangePanel() {
   const [draft, setDraft] = useState<GridBombRanges>(() => defaultBombRanges());
@@ -63,11 +156,11 @@ export function BlockGameBombRangePanel() {
     <div className="space-y-4">
       <p className="text-sm text-zinc-400">
         Per-grid random bomb density for live <span className="font-mono text-zinc-300">/game</span> rounds. Each new
-        round picks a bomb count between min% and max% of cells. Defaults: 30%–55%.
+        round picks a bomb count between min% and max% of cells. Defaults: 30%–55%. Use ±5 or type a value (5–90).
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-white/10">
-        <table className="w-full min-w-[520px] text-left text-sm">
+        <table className="w-full min-w-[560px] text-left text-sm">
           <thead>
             <tr className="border-b border-white/10 bg-zinc-900/80 text-[10px] uppercase tracking-wide text-zinc-500">
               <th className="px-3 py-2">Grid</th>
@@ -88,25 +181,17 @@ export function BlockGameBombRangePanel() {
                   <td className="px-3 py-2 font-medium text-zinc-200">{p.label}</td>
                   <td className="px-3 py-2 tabular-nums text-zinc-500">{total}</td>
                   <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      min={5}
-                      max={90}
-                      step={1}
-                      value={Math.round(r.pctMin * 100)}
-                      onChange={(e) => setPreset(p.id, { pctMin: Number(e.target.value) / 100 })}
-                      className="h-8 w-16 rounded border border-white/10 bg-zinc-900 px-2 text-xs tabular-nums"
+                    <PctStepper
+                      value={r.pctMin}
+                      onChange={(pctMin) => setPreset(p.id, { pctMin })}
+                      aria-label={`${p.label} minimum bomb percent`}
                     />
                   </td>
                   <td className="px-3 py-2">
-                    <input
-                      type="number"
-                      min={5}
-                      max={90}
-                      step={1}
-                      value={Math.round(r.pctMax * 100)}
-                      onChange={(e) => setPreset(p.id, { pctMax: Number(e.target.value) / 100 })}
-                      className="h-8 w-16 rounded border border-white/10 bg-zinc-900 px-2 text-xs tabular-nums"
+                    <PctStepper
+                      value={r.pctMax}
+                      onChange={(pctMax) => setPreset(p.id, { pctMax })}
+                      aria-label={`${p.label} maximum bomb percent`}
                     />
                   </td>
                   <td className="px-3 py-2 text-xs tabular-nums text-zinc-500">

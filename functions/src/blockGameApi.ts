@@ -214,7 +214,6 @@ export async function handleBlockGameApi(
     const db = admin.firestore();
     const reqRef = db.doc(`blockGameFundRequests/${id}`);
     const FREE_START = 10;
-    const MAX_WALLET = 9999;
 
     try {
       const ok = await db.runTransaction(async (tx) => {
@@ -251,9 +250,9 @@ export async function handleBlockGameApi(
         );
 
         if (status === "approved") {
-          const nextBal = Math.min(
-            MAX_WALLET,
-            Math.max(0, Math.round((prevWallet?.balance ?? FREE_START) + Number(req.amount ?? 0))),
+          const nextBal = Math.max(
+            0,
+            Math.round((prevWallet?.balance ?? FREE_START) + Number(req.amount ?? 0)),
           );
           tx.set(
             wRef,

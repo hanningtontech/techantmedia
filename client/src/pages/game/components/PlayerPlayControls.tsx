@@ -4,6 +4,7 @@ import { useBlockGamePlayer, useNextMultiplier } from "@/contexts/BlockGamePlaye
 import { usePhoneGameLayout } from "@/hooks/usePhoneGameLayout";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { needsStakeAdjust, StakeAdjustControl } from "./StakeAdjustControl";
 
 const sideBtnClass =
   "min-h-9 h-auto whitespace-normal px-1.5 py-2 text-[11px] leading-tight sm:min-h-10 sm:px-2 sm:text-xs md:min-h-11 md:px-2.5 md:text-sm lg:min-h-12 lg:px-3 lg:text-base";
@@ -68,10 +69,12 @@ export function PlayerPlayControls({
     formatKes,
     config,
     accountBalance,
+    setStake,
   } = useBlockGamePlayer();
 
   const nextMult = useNextMultiplier(config, currentRound);
   const playing = status === "playing";
+  const stakeTooHigh = needsStakeAdjust(accountBalance, stake);
   const isPhone = usePhoneGameLayout();
   const actionBarRef = useRef<HTMLDivElement>(null);
   const isSide = layout === "side";
@@ -81,18 +84,30 @@ export function PlayerPlayControls({
     const buttons: ReactNode[] = [];
 
     if (!roundSettled && !playing) {
-      buttons.push(
-        <Button
-          key="start"
-          type="button"
-          disabled={!canStartGame || balanceAnimating}
-          className={cn("w-full bg-violet-600 hover:bg-violet-500", desktopBtnClass)}
-          onClick={() => startNewGame()}
-        >
-          <Play className="mr-1.5 h-4 w-4 shrink-0" />
-          Start · {formatKes(stake, { compact: true })}
-        </Button>,
-      );
+      if (stakeTooHigh) {
+        buttons.push(
+          <StakeAdjustControl
+            key="adjust-stake"
+            stake={stake}
+            accountBalance={accountBalance}
+            setStake={setStake}
+            compact
+          />,
+        );
+      } else {
+        buttons.push(
+          <Button
+            key="start"
+            type="button"
+            disabled={!canStartGame || balanceAnimating}
+            className={cn("w-full bg-violet-600 hover:bg-violet-500", desktopBtnClass)}
+            onClick={() => startNewGame()}
+          >
+            <Play className="mr-1.5 h-4 w-4 shrink-0" />
+            Start · {formatKes(stake, { compact: true })}
+          </Button>,
+        );
+      }
     }
 
     if (playing && canCashOut) {
@@ -110,17 +125,31 @@ export function PlayerPlayControls({
     }
 
     if (roundSettled && !playing) {
+      if (stakeTooHigh) {
+        buttons.push(
+          <StakeAdjustControl
+            key="adjust-stake-again"
+            stake={stake}
+            accountBalance={accountBalance}
+            setStake={setStake}
+            compact
+          />,
+        );
+      } else {
+        buttons.push(
+          <Button
+            key="again"
+            type="button"
+            disabled={!canPlayAgain || balanceAnimating}
+            className={cn("w-full bg-violet-600 hover:bg-violet-500", desktopBtnClass)}
+            onClick={() => playAgain()}
+          >
+            <Play className="mr-1.5 h-4 w-4 shrink-0" />
+            Play again
+          </Button>,
+        );
+      }
       buttons.push(
-        <Button
-          key="again"
-          type="button"
-          disabled={!canPlayAgain || balanceAnimating}
-          className={cn("w-full bg-violet-600 hover:bg-violet-500", desktopBtnClass)}
-          onClick={() => playAgain()}
-        >
-          <Play className="mr-1.5 h-4 w-4 shrink-0" />
-          Play again
-        </Button>,
         <Button
           key="reset"
           type="button"
@@ -160,11 +189,6 @@ export function PlayerPlayControls({
         ) : (
           <div className="h-9" />
         )}
-        {!canPlayAgain && !canStartGame && !playing && roundSettled && accountBalance < stake && (
-          <p className="mt-2 text-center text-[10px] text-amber-400/90">
-            Insufficient balance — lower stake or request funds in settings.
-          </p>
-        )}
       </div>
     );
   }
@@ -173,15 +197,23 @@ export function PlayerPlayControls({
     return (
       <div className="flex min-h-[60px] w-full flex-col justify-center gap-2">
         {!roundSettled && !playing && (
-          <Button
-            type="button"
-            disabled={!canStartGame || balanceAnimating}
-            className="h-12 w-full bg-violet-600 text-base hover:bg-violet-500"
-            onClick={() => startNewGame()}
-          >
-            <Play className="mr-2 h-5 w-5 shrink-0" />
-            Start round · {formatKes(stake)}
-          </Button>
+          stakeTooHigh ? (
+            <StakeAdjustControl
+              stake={stake}
+              accountBalance={accountBalance}
+              setStake={setStake}
+            />
+          ) : (
+            <Button
+              type="button"
+              disabled={!canStartGame || balanceAnimating}
+              className="h-12 w-full bg-violet-600 text-base hover:bg-violet-500"
+              onClick={() => startNewGame()}
+            >
+              <Play className="mr-2 h-5 w-5 shrink-0" />
+              Start round · {formatKes(stake)}
+            </Button>
+          )
         )}
 
         {playing && (
@@ -238,15 +270,25 @@ export function PlayerPlayControls({
                 </p>
               </div>
             )}
-            <Button
-              type="button"
-              disabled={!canPlayAgain || balanceAnimating}
-              className="h-auto min-h-[3.25rem] flex-1 basis-0 bg-violet-600 px-2 text-sm font-semibold hover:bg-violet-500 disabled:opacity-50"
-              onClick={() => playAgain()}
-            >
-              <Play className="mr-1.5 h-4 w-4 shrink-0" />
-              Play again
-            </Button>
+            {stakeTooHigh ? (
+              <StakeAdjustControl
+                className="min-h-[3.25rem] flex-1 basis-0"
+                stake={stake}
+                accountBalance={accountBalance}
+                setStake={setStake}
+                compact
+              />
+            ) : (
+              <Button
+                type="button"
+                disabled={!canPlayAgain || balanceAnimating}
+                className="h-auto min-h-[3.25rem] flex-1 basis-0 bg-violet-600 px-2 text-sm font-semibold hover:bg-violet-500 disabled:opacity-50"
+                onClick={() => playAgain()}
+              >
+                <Play className="mr-1.5 h-4 w-4 shrink-0" />
+                Play again
+              </Button>
+            )}
             <Button
               type="button"
               disabled={balanceAnimating || !canResetAfterRound}
@@ -259,12 +301,6 @@ export function PlayerPlayControls({
               <RotateCcw className="h-4 w-4" />
             </Button>
           </div>
-        )}
-
-        {!canPlayAgain && !canStartGame && !playing && roundSettled && accountBalance < stake && (
-          <p className="text-center text-[10px] text-amber-400/90">
-            Insufficient balance — lower stake or request funds.
-          </p>
         )}
       </div>
     );
@@ -344,23 +380,32 @@ export function PlayerPlayControls({
           )}
         >
           {!roundSettled && !playing && (
-            <Button
-              type="button"
-              disabled={!canStartGame || balanceAnimating}
-              className={cn(
-                "bg-violet-600 hover:bg-violet-500",
-                isSide ? sideBtnClass : "h-12 text-base sm:col-span-2",
-                layout === "stack" && "sm:col-span-2",
-              )}
-              onClick={() => startNewGame()}
-            >
-              <Play className={cn("mr-1.5 shrink-0", isSide ? "h-4 w-4 sm:h-5 sm:w-5" : "mr-2 h-5 w-5")} />
-              {isSide ? (
-                <>Start · {formatKes(stake, { compact: true })}</>
-              ) : (
-                <>Start round · {formatKes(stake)}</>
-              )}
-            </Button>
+            stakeTooHigh ? (
+              <StakeAdjustControl
+                className={cn(layout === "stack" && "sm:col-span-2")}
+                stake={stake}
+                accountBalance={accountBalance}
+                setStake={setStake}
+              />
+            ) : (
+              <Button
+                type="button"
+                disabled={!canStartGame || balanceAnimating}
+                className={cn(
+                  "bg-violet-600 hover:bg-violet-500",
+                  isSide ? sideBtnClass : "h-12 text-base sm:col-span-2",
+                  layout === "stack" && "sm:col-span-2",
+                )}
+                onClick={() => startNewGame()}
+              >
+                <Play className={cn("mr-1.5 shrink-0", isSide ? "h-4 w-4 sm:h-5 sm:w-5" : "mr-2 h-5 w-5")} />
+                {isSide ? (
+                  <>Start · {formatKes(stake, { compact: true })}</>
+                ) : (
+                  <>Start round · {formatKes(stake)}</>
+                )}
+              </Button>
+            )
           )}
 
           {playing && canCashOut && (
@@ -384,18 +429,28 @@ export function PlayerPlayControls({
 
           {roundSettled && !playing && (
             <>
-              <Button
-                type="button"
-                disabled={!canPlayAgain || balanceAnimating}
-                className={cn(
-                  "bg-violet-600 hover:bg-violet-500",
-                  isSide ? sideBtnClass : "h-12 text-base",
-                )}
-                onClick={() => playAgain()}
-              >
-                <Play className={cn("mr-1.5 shrink-0", isSide ? "h-4 w-4 sm:h-5 sm:w-5" : "mr-2 h-5 w-5")} />
-                Play again
-              </Button>
+              {stakeTooHigh ? (
+                <StakeAdjustControl
+                  className={cn(isSide ? "col-span-1" : "", layout === "stack" && "sm:col-span-2")}
+                  stake={stake}
+                  accountBalance={accountBalance}
+                  setStake={setStake}
+                  compact={isSide}
+                />
+              ) : (
+                <Button
+                  type="button"
+                  disabled={!canPlayAgain || balanceAnimating}
+                  className={cn(
+                    "bg-violet-600 hover:bg-violet-500",
+                    isSide ? sideBtnClass : "h-12 text-base",
+                  )}
+                  onClick={() => playAgain()}
+                >
+                  <Play className={cn("mr-1.5 shrink-0", isSide ? "h-4 w-4 sm:h-5 sm:w-5" : "mr-2 h-5 w-5")} />
+                  Play again
+                </Button>
+              )}
               <Button
                 type="button"
                 disabled={balanceAnimating}
@@ -412,12 +467,6 @@ export function PlayerPlayControls({
             </>
           )}
         </div>
-
-        {!canPlayAgain && !canStartGame && !playing && roundSettled && accountBalance < stake && (
-          <p className="text-center text-[10px] text-amber-400/90 sm:text-xs">
-            Insufficient balance — lower stake or request funds.
-          </p>
-        )}
       </div>
     </div>
   );

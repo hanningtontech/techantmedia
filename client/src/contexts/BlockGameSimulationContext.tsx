@@ -24,6 +24,11 @@ import {
   totalScheduledGames,
 } from "@/lib/simulation/engine";
 import { appendLiveChartTick, loadLiveChartSnapshot, subscribeLiveChart, type LiveChartSnapshot } from "@/lib/game/blockGameFirestore";
+import {
+  getFullLiveChartHistoryCached,
+  mergeTailIntoArchiveCache,
+  peekLiveChartArchiveCache,
+} from "@/lib/game/liveChartCache";
 import { acquireChartSimWakeLock, releaseChartSimWakeLock } from "@/lib/game/chartSimKeepAlive";
 import type { AutoGameResult, PlayerGameQuota } from "@/lib/simulation/engine";
 import type { PlayerWallet } from "@/lib/simulation/types";
@@ -253,9 +258,12 @@ export function BlockGameSimulationProvider({ children }: { children: ReactNode 
   const accountBeforeGameRef = useRef(accountBalance);
 
   const applyLiveChartSnapshot = useCallback((snap: LiveChartSnapshot) => {
-    const merged = mergeLiveChartTicks(chartHistoryRef.current, snap.chartHistory);
+    const cached = peekLiveChartArchiveCache();
+    const base = cached.length > 0 ? cached : chartHistoryRef.current;
+    const merged = mergeLiveChartTicks(base, snap.chartHistory);
     chartHistoryRef.current = merged;
     setChartHistory(merged);
+    mergeTailIntoArchiveCache(snap.chartHistory);
     const last = merged[merged.length - 1];
     setLiveMetrics({
       games: last?.gameIndex ?? snap.totalGames,
@@ -265,8 +273,29 @@ export function BlockGameSimulationProvider({ children }: { children: ReactNode 
   }, []);
 
   const hydrateChartFromLive = useCallback(async () => {
+    const cached = peekLiveChartArchiveCache();
+    if (cached.length > 0) {
+      chartHistoryRef.current = cached;
+      setChartHistory(cached);
+      const last = cached[cached.length - 1];
+      if (last) {
+        setLiveMetrics({
+          games: last.gameIndex,
+          userProfit: last.userCumulative,
+          adminRevenue: last.adminCumulative,
+        });
+      }
+    }
     const snap = await loadLiveChartSnapshot();
-    if (snap?.chartHistory.length) applyLiveChartSnapshot(snap);
+    if (snap?.chartHistory.length) {
+      applyLiveChartSnapshot(snap);
+      return;
+    }
+    const full = await getFullLiveChartHistoryCached();
+    if (full.length > 0) {
+      chartHistoryRef.current = full;
+      setChartHistory(full);
+    }
   }, [applyLiveChartSnapshot]);
 
   useEffect(() => {

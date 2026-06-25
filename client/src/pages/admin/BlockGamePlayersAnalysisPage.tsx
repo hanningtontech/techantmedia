@@ -1,18 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BarChart3, Loader2, Search, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, BarChart3, Loader2, RefreshCw, Search, Users } from "lucide-react";
 import { Link, useSearch } from "wouter";
+import { toast } from "sonner";
 import { BlockGamePlayerDetailDialog } from "@/components/admin/block-game/BlockGamePlayerDetailDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   BLOCK_GAME_PLAYERS_ANALYSIS_PATH,
   fetchBlockGamePlayersPage,
+  syncBlockGamePlayersFromSources,
   type BlockGamePlayerDoc,
 } from "@/lib/game/blockGamePlayersFirestore";
+import { formatAuthOrFirestoreError } from "@/lib/authErrorMessage";
 import { formatKes } from "@/lib/game/formatKes";
 import {
-  getPlayerRevenuePeriodBounds,
-  PLAYER_REVENUE_PERIODS,
+  PLAYER_DETAIL_PERIODS,
   type PlayerRevenuePeriodId,
 } from "@/lib/game/playerRevenuePeriods";
 import { canAccessNavId } from "@/lib/admin/adminPermissions";
@@ -26,8 +28,16 @@ export default function BlockGamePlayersAnalysisPage() {
   const searchParams = useSearch();
   const initialPeriod = useMemo((): PlayerRevenuePeriodId => {
     const raw = new URLSearchParams(searchParams).get("period");
-    if (raw === "hour" || raw === "day" || raw === "week" || raw === "month") return raw;
-    return "month";
+    if (
+      raw === "all" ||
+      raw === "hour" ||
+      raw === "day" ||
+      raw === "week" ||
+      raw === "month"
+    ) {
+      return raw;
+    }
+    return "all";
   }, [searchParams]);
   const [period, setPeriod] = useState<PlayerRevenuePeriodId>(initialPeriod);
   const [players, setPlayers] = useState<BlockGamePlayerDoc[]>([]);
@@ -38,19 +48,15 @@ export default function BlockGamePlayersAnalysisPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<BlockGamePlayerDoc | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const didAutoSync = useRef(false);
 
   useEffect(() => {
     setPeriod(initialPeriod);
   }, [initialPeriod]);
 
   const allowed = canAccessNavId("offpages.blockGame", profile, user?.email);
-  const bounds = useMemo(() => getPlayerRevenuePeriodBounds(period, now), [period, now]);
-
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(t);
-  }, []);
 
   const loadPlayers = useCallback(async (reset: boolean) => {
     if (reset) {
@@ -74,11 +80,30 @@ export default function BlockGamePlayersAnalysisPage() {
     }
   }, [lastDoc]);
 
+  const runSync = useCallback(async (showToast: boolean) => {
+    setSyncing(true);
+    setSyncMessage("Starting sync…");
+    try {
+      const result = await syncBlockGamePlayersFromSources(setSyncMessage);
+      if (showToast) {
+        toast.success(
+          `Synced ${result.total} player${result.total === 1 ? "" : "s"} from wallets and history (${result.created} new, ${result.updated} updated, ${result.roundsScanned} rounds scanned).`,
+        );
+      }
+      await loadPlayers(true);
+    } catch (e) {
+      toast.error(formatAuthOrFirestoreError(e));
+    } finally {
+      setSyncing(false);
+      setSyncMessage(null);
+    }
+  }, [loadPlayers]);
+
   useEffect(() => {
-    if (!allowed || authLoading) return;
-    void loadPlayers(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowed, authLoading]);
+    if (!allowed || authLoading || didAutoSync.current) return;
+    didAutoSync.current = true;
+    void runSync(false);
+  }, [allowed, authLoading, runSync]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -141,21 +166,43 @@ export default function BlockGamePlayersAnalysisPage() {
                 Block game · Player analysis
               </h1>
               <p className="text-xs text-zinc-500">
-                All registered players and gaming history · {bounds.label}
+                Lifetime totals per player · click a row for round history
               </p>
             </div>
           </div>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-medium text-violet-300">
-            <Users className="h-3 w-3" />
-            {players.length}
-            {hasMore ? "+" : ""} loaded
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {syncMessage && (
+              <span className="max-w-[200px] truncate text-[11px] text-zinc-500 sm:max-w-xs">
+                {syncMessage}
+              </span>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="border-white/15 text-zinc-300"
+              disabled={syncing || loading}
+              onClick={() => void runSync(true)}
+            >
+              {syncing ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              )}
+              Sync players
+            </Button>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-2.5 py-1 text-[11px] font-medium text-violet-300">
+              <Users className="h-3 w-3" />
+              {players.length}
+              {hasMore ? "+" : ""} loaded
+            </span>
+          </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-7xl space-y-5 px-4 py-6 sm:px-6">
         <div className="flex flex-wrap gap-2">
-          {PLAYER_REVENUE_PERIODS.map((p) => (
+          {PLAYER_DETAIL_PERIODS.map((p) => (
             <Button
               key={p.id}
               type="button"
@@ -174,8 +221,11 @@ export default function BlockGamePlayersAnalysisPage() {
         </div>
 
         <p className="text-sm text-zinc-400">
-          Click a player to open their full record. Round history loads in small pages — use{" "}
-          <strong className="font-medium text-zinc-300">Load more</strong> inside the detail view.
+          Players are imported from wallets, round history, and sign-in records when you open this page.
+          Table columns are <strong className="font-medium text-zinc-300">lifetime</strong> totals — use period
+          tabs in the detail view to filter round history. Click{" "}
+          <strong className="font-medium text-zinc-300">Sync players</strong> after updates to refresh profit
+          figures from wallets and rounds.
         </p>
 
         <div className="relative max-w-md">
@@ -196,7 +246,7 @@ export default function BlockGamePlayersAnalysisPage() {
           <div className="rounded-xl border border-white/10 bg-zinc-950/80 px-6 py-16 text-center text-zinc-500">
             {search.trim()
               ? "No players match your search on the loaded pages."
-              : "No registered block-game players yet. Players appear when they sign up at /game."}
+              : "No players found yet. Use Sync players to import from existing wallets and game history."}
           </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-white/10 bg-zinc-950/50">
@@ -208,6 +258,7 @@ export default function BlockGamePlayersAnalysisPage() {
                     <th className="px-4 py-3">Registered</th>
                     <th className="px-4 py-3">Last played</th>
                     <th className="px-4 py-3 text-right">Rounds</th>
+                    <th className="px-4 py-3 text-right">Wins / losses</th>
                     <th className="px-4 py-3 text-right">Staked</th>
                     <th className="px-4 py-3 text-right">Player net</th>
                     <th className="px-4 py-3 text-right">House net</th>
@@ -215,7 +266,7 @@ export default function BlockGamePlayersAnalysisPage() {
                 </thead>
                 <tbody>
                   {filtered.map((p) => {
-                    const playerUp = p.totalUserProfit >= 0;
+                    const playerUp = p.stats.userProfit >= 0;
                     return (
                       <tr
                         key={p.uid}
@@ -235,10 +286,13 @@ export default function BlockGamePlayersAnalysisPage() {
                           {p.lastPlayedAt ? new Date(p.lastPlayedAt).toLocaleString() : "Never"}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-zinc-200">
-                          {p.totalRounds.toLocaleString()}
+                          {p.stats.rounds.toLocaleString()}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-zinc-400">
-                          {formatKes(p.totalStaked)}
+                          {p.stats.wins} / {p.stats.losses}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-zinc-400">
+                          {formatKes(p.stats.staked)}
                         </td>
                         <td
                           className={cn(
@@ -246,15 +300,15 @@ export default function BlockGamePlayersAnalysisPage() {
                             playerUp ? "text-emerald-400" : "text-red-400",
                           )}
                         >
-                          {formatKes(p.totalUserProfit)}
+                          {formatKes(p.stats.userProfit)}
                         </td>
                         <td
                           className={cn(
                             "px-4 py-3 text-right tabular-nums font-medium",
-                            p.totalAdminRevenue >= 0 ? "text-emerald-400" : "text-red-400",
+                            p.stats.adminRevenue >= 0 ? "text-emerald-400" : "text-red-400",
                           )}
                         >
-                          {formatKes(p.totalAdminRevenue)}
+                          {formatKes(p.stats.adminRevenue)}
                         </td>
                       </tr>
                     );
