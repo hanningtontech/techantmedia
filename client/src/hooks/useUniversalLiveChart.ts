@@ -1,11 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   loadBlockGameSettings,
   subscribeBlockGameSettings,
   subscribeLiveChart,
   loadLiveChartSnapshot,
+  loadFullLiveChartHistory,
   type LiveChartSnapshot,
 } from "@/lib/game/blockGameFirestore";
+import {
+  hasSavedChartInterval,
+  loadChartInterval,
+  saveChartInterval,
+} from "@/lib/game/chartDisplayPrefs";
 import { DEFAULT_HOUSE_EDGE } from "@/lib/game/constants";
 import {
   readSimChartSessionSnapshot,
@@ -13,7 +19,7 @@ import {
   type SimChartSessionSnapshot,
 } from "@/lib/simulation/chartSessionSync";
 import {
-  availableTimeframes,
+  allChartTimeframesForPicker,
   buildTimeCandles,
   CHART_TIMEFRAMES,
   mergeLiveChartTicks,
@@ -105,25 +111,30 @@ function mergeChartHistorySoft(prev: SimChartTick[], incoming: SimChartTick[]): 
 /** Same feed + UI as /simulation chart (`ForexCandlestickChart` via `BlockGameUniversalChart`). */
 export function useUniversalLiveChart() {
   const [firestore, setFirestore] = useState<LiveChartSnapshot | null>(null);
+  const [archivedHistory, setArchivedHistory] = useState<SimChartTick[]>([]);
   const [simSession, setSimSession] = useState<SimChartSessionSnapshot | null>(() =>
     readSimChartSessionSnapshot(),
   );
   const [houseEdge, setHouseEdge] = useState(DEFAULT_HOUSE_EDGE);
-  const [timeframeId, setTimeframeId] = useState(
-    () => readSimChartSessionSnapshot()?.chartTimeframeId ?? "1s",
-  );
+  const [timeframeId, setTimeframeIdState] = useState(() => loadChartInterval() ?? "1s");
   const prevTickCount = useRef(0);
   const [ticksGrowing, setTicksGrowing] = useState(false);
+
+  const setTimeframeId = useCallback((id: string) => {
+    setTimeframeIdState(id);
+    saveChartInterval(id);
+  }, []);
 
   useEffect(() => subscribeLiveChart(setFirestore), []);
   useEffect(() => subscribeBlockGameSettings((s) => setHouseEdge(s.houseEdge)), []);
 
   useEffect(() => {
+    void loadFullLiveChartHistory().then(setArchivedHistory);
+  }, []);
+
+  useEffect(() => {
     return subscribeSimChartSessionSnapshot((snap) => {
       setSimSession(snap);
-      if (snap?.chartTimeframeId && snap.autoProgress.running) {
-        setTimeframeId(snap.chartTimeframeId);
-      }
     });
   }, []);
 
@@ -141,6 +152,9 @@ export function useUniversalLiveChart() {
           };
         });
       }
+      const full = await loadFullLiveChartHistory();
+      if (full.length > 0) setArchivedHistory(full);
+
       await loadBlockGameSettings().then((s) => setHouseEdge(s.houseEdge)).catch(() => {});
 
       const localSim = readSimChartSessionSnapshot();
@@ -157,8 +171,14 @@ export function useUniversalLiveChart() {
     [firestore, houseEdge, simSession],
   );
 
+  const lifetimeHistory = useMemo(() => {
+    const tail = merged.chartHistory;
+    if (archivedHistory.length === 0) return tail;
+    if (tail.length === 0) return archivedHistory;
+    return mergeLiveChartTicks(archivedHistory, tail);
+  }, [archivedHistory, merged.chartHistory]);
+
   const {
-    chartHistory: sourceHistory,
     liveMetrics,
     isLive,
     autoProgress,
@@ -170,7 +190,7 @@ export function useUniversalLiveChart() {
 
   const chartLive = isLive || ticksGrowing || simRunning;
 
-  const chartHistory = useChartTickReplay(sourceHistory, { live: chartLive, source });
+  const chartHistory = useChartTickReplay(lifetimeHistory, { live: chartLive, source });
 
   useEffect(() => {
     const len = chartHistory.length;
@@ -183,7 +203,7 @@ export function useUniversalLiveChart() {
     prevTickCount.current = len;
   }, [chartHistory.length]);
 
-  const chartTimeframes = useMemo(() => availableTimeframes(chartHistory), [chartHistory]);
+  const chartTimeframes = useMemo(() => allChartTimeframesForPicker(), []);
 
   const chartTimeframeMs = useMemo(() => {
     const found = CHART_TIMEFRAMES.find((t) => t.id === timeframeId);
@@ -192,10 +212,9 @@ export function useUniversalLiveChart() {
 
   useEffect(() => {
     if (chartHistory.length < 2) return;
-    const avail = availableTimeframes(chartHistory);
-    if (avail.length === 0) return;
-    if (!avail.some((a) => a.id === timeframeId)) {
-      setTimeframeId(pickDefaultTimeframeId(chartHistory));
+    if (hasSavedChartInterval()) return;
+    if (!CHART_TIMEFRAMES.some((a) => a.id === timeframeId)) {
+      setTimeframeIdState(pickDefaultTimeframeId(chartHistory));
     }
   }, [chartHistory, timeframeId]);
 

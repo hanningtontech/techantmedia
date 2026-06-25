@@ -67,8 +67,14 @@ export function layoutCandlesRight<T>(
   return placed;
 }
 
-export function visibleCountForWidth(width: number, zoom: number): number {
-  const plotW = Math.max(100, width - 76);
+/** How many candle slots fit in the plot area (TradingView: more zoom = fewer, wider candles). */
+export function visibleCountForWidth(
+  width: number,
+  zoom: number,
+  padLeft = 8,
+  padRight = 68,
+): number {
+  const plotW = Math.max(100, width - padLeft - padRight);
   const atZoom1 = Math.max(16, Math.floor(plotW / 6));
   return Math.max(3, Math.round(atZoom1 / Math.max(0.25, zoom)));
 }

@@ -1,4 +1,3 @@
-import { Minus, Plus, RotateCcw } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -10,8 +9,18 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { computeChartLayout } from "@/lib/simulation/chartLayout";
 import {
-  computeVisibleRange,
+  buildPriceScale,
+  currentPriceBadgeWidth,
+  formatOhlc,
+  formatPriceAxis,
+  formatPriceDisplay,
+  priceToY,
+  type ChartSeriesMode,
+} from "@/lib/simulation/chartPriceScale";
+import { buildCenterAnchoredTimeLabels, buildTimeAxisLabels, liveCenterTimeMsFromCandles } from "@/lib/simulation/chartTimeScale";
+import {
   computeCandleGeometry,
   layoutCandlesCenter,
   layoutCandlesRight,
@@ -24,9 +33,15 @@ import {
 } from "@/lib/simulation/chartViewport";
 import type { SimCandle } from "@/lib/simulation/candleSeries";
 import type { ChartTimeframe, SimChartTick } from "@/lib/simulation/timeChartHistory";
-import { chartLocalTimeZone, formatTimeAxisLabel, liveChartCenterTimeMs, liveChartTimeAtSlot } from "@/lib/simulation/timeChartHistory";
+import {
+  CHART_TIMEFRAMES,
+  chartLocalTimeZone,
+  formatCandleTimeRange,
+  summarizeCandlePeriod,
+} from "@/lib/simulation/timeChartHistory";
 import { cn } from "@/lib/utils";
 import { CandleDetailDialog } from "./CandleDetailDialog";
+import { ForexCandlestickChartToolbar } from "./ForexCandlestickChartToolbar";
 
 type IndexedCandle = SimCandle & { _idx: number; _slot: number };
 
@@ -49,36 +64,7 @@ const TV = {
   volume: "rgba(41,98,255,0.45)",
 };
 
-type ChartDisplayMode = "candles" | "line" | "area";
-
-const CHART_MODES: { id: ChartDisplayMode; label: string }[] = [
-  { id: "candles", label: "Candles" },
-  { id: "line", label: "Line" },
-  { id: "area", label: "Area" },
-];
-const PAD = { top: 28, right: 68, bottom: 22, left: 8 };
-const VOLUME_H_RATIO = 0.14;
-/** Minimum stick length past the body so every candle shows a thin wick. */
 const MIN_WICK_PX = 3;
-
-function fmtPrice(n: number) {
-  const abs = Math.abs(n);
-  const digits = abs >= 1000 ? 0 : abs >= 100 ? 1 : 2;
-  const sign = n > 0 ? "+" : n < 0 ? "−" : "";
-  return `${sign}$${abs.toFixed(digits)}`;
-}
-
-function fmtPriceAxis(n: number) {
-  const abs = Math.abs(n);
-  const digits = abs >= 1000 ? 0 : abs >= 100 ? 1 : 2;
-  if (Math.abs(n) < 0.005) return "0.00";
-  const sign = n > 0 ? "+" : "−";
-  return `${sign}${abs.toFixed(digits)}`;
-}
-
-function fmtOhlc(n: number) {
-  return fmtPrice(n);
-}
 
 export interface ChartLiveStats {
   games: number;
@@ -114,12 +100,20 @@ export function ForexCandlestickChart({
   chartHistory?: SimChartTick[];
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ active: boolean; startX: number; startY: number; startOffset: number; startPricePan: number }>({
+  const dragRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    startOffset: number;
+    startPricePan: number;
+    axis: "time" | "price" | null;
+  }>({
     active: false,
     startX: 0,
     startY: 0,
     startOffset: 0,
     startPricePan: 0,
+    axis: null,
   });
 
   const [size, setSize] = useState({ w: 800, h: 400 });
@@ -130,10 +124,12 @@ export function ForexCandlestickChart({
   const [pricePan, setPricePan] = useState(0);
   const [followLatest, setFollowLatest] = useState(true);
   const [crosshair, setCrosshair] = useState<{ x: number; y: number } | null>(null);
-  const [displayMode, setDisplayMode] = useState<ChartDisplayMode>("candles");
+  const [displayMode, setDisplayMode] = useState<ChartSeriesMode>("candles");
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; candleIdx: number } | null>(null);
   const [detailCandleIdx, setDetailCandleIdx] = useState<number | null>(null);
   const [axisNow, setAxisNow] = useState(() => Date.now());
+
+  const useCenterAnchor = live === true;
 
   useEffect(() => {
     if (!live) return;
@@ -146,12 +142,16 @@ export function ForexCandlestickChart({
   const houseCandles = series.find((s) => s.id === "house")?.candles ?? [];
   const allCandles = active?.candles ?? [];
 
-  const useCenterAnchor = live === true;
-  const visibleCount = useMemo(() => visibleCountForWidth(size.w, zoom), [size.w, zoom]);
+  const layout = useMemo(() => computeChartLayout(size.w, size.h), [size.w, size.h]);
+  const visibleCount = useMemo(
+    () => visibleCountForWidth(size.w, zoom, layout.pad.left, layout.pad.right),
+    [layout.pad.left, layout.pad.right, size.w, zoom],
+  );
 
   const panMax = useMemo(() => {
     if (useCenterAnchor) return maxPanOffsetCenter(allCandles.length, visibleCount);
-    return computeVisibleRange(allCandles.length, { visibleCount, scrollOffset: 0 }).maxOffset;
+    const count = Math.min(visibleCount, allCandles.length);
+    return Math.max(0, allCandles.length - count);
   }, [allCandles.length, useCenterAnchor, visibleCount]);
 
   const placedCandles = useMemo((): IndexedCandle[] => {
@@ -170,44 +170,19 @@ export function ForexCandlestickChart({
     }));
   }, [allCandles, scrollOffset, useCenterAnchor, visibleCount]);
 
-  const chartTimeframeMs = useMemo(
-    () => timeframes.find((tf) => tf.id === timeframeId)?.ms ?? 1_000,
-    [timeframeId, timeframes],
-  );
+  const chartTimeframeMs = useMemo(() => {
+    const found = CHART_TIMEFRAMES.find((t) => t.id === timeframeId);
+    return found?.ms ?? CHART_TIMEFRAMES[0]!.ms;
+  }, [timeframeId]);
 
-  const fixedLiveXLabels = useMemo(() => {
-    if (!useCenterAnchor || allCandles.length === 0) return null;
-    const centerTimeMs = liveChartCenterTimeMs(allCandles[allCandles.length - 1], axisNow);
-    const plotW = Math.max(100, size.w - PAD.left - PAD.right);
-    const slotW = plotW / Math.max(visibleCount, 1);
-    const labelEvery = Math.max(1, Math.ceil(visibleCount / Math.max(4, Math.floor(plotW / 90))));
-    const labels: { x: number; label: string; idx: number }[] = [];
-    for (let slot = 0; slot < visibleCount; slot += labelEvery) {
-      labels.push({
-        x: PAD.left + (slot + 0.5) * slotW,
-        label: formatTimeAxisLabel(
-          liveChartTimeAtSlot(slot, visibleCount, chartTimeframeMs, centerTimeMs),
-          chartTimeframeMs,
-        ),
-        idx: slot,
-      });
-    }
-    const lastSlot = visibleCount - 1;
-    if (labels[labels.length - 1]?.idx !== lastSlot) {
-      labels.push({
-        x: PAD.left + (lastSlot + 0.5) * slotW,
-        label: formatTimeAxisLabel(
-          liveChartTimeAtSlot(lastSlot, visibleCount, chartTimeframeMs, centerTimeMs),
-          chartTimeframeMs,
-        ),
-        idx: lastSlot,
-      });
-    }
-    return labels;
-  }, [allCandles, axisNow, chartTimeframeMs, size.w, useCenterAnchor, visibleCount]);
+  const latestCandleAnchor = useMemo(() => {
+    const last = allCandles[allCandles.length - 1];
+    if (!last) return 0;
+    return last.gameEnd ?? last.timeEnd ?? last.id;
+  }, [allCandles]);
 
-  const canPanOlder = !useCenterAnchor && scrollOffset < panMax;
-  const canPanNewer = !useCenterAnchor && scrollOffset > 0;
+  const canPanOlder = scrollOffset < panMax;
+  const canPanNewer = scrollOffset > 0;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -231,7 +206,7 @@ export function ForexCandlestickChart({
 
   useEffect(() => {
     if (followLatest) setScrollOffset(0);
-  }, [allCandles.length, followLatest]);
+  }, [latestCandleAnchor, followLatest]);
 
   useEffect(() => {
     setScrollOffset((o) => Math.min(o, panMax));
@@ -292,29 +267,85 @@ export function ForexCandlestickChart({
     };
   }, [contextMenu]);
 
+  const plotMetrics = useMemo(() => {
+    const W = size.w;
+    const H = size.h;
+    const pad = layout.pad;
+    const plotLeft = pad.left;
+    const plotRight = W - pad.right;
+    const plotTop = pad.top;
+    const plotBottom = H - pad.bottom;
+    const volumeH = Math.max(14, (plotBottom - plotTop) * layout.volumeRatio);
+    const mainBottom = plotBottom - volumeH - 4;
+    const plotW = plotRight - plotLeft;
+    const { slotW, bodyW, wickW } = computeCandleGeometry(plotW, visibleCount);
+    return { plotLeft, plotRight, plotTop, plotBottom, mainBottom, plotW, slotW, bodyW, wickW, volumeH };
+  }, [layout, size, visibleCount]);
+
+  const priceScale = useMemo(
+    () => buildPriceScale(placedCandles, displayMode, plotMetrics.mainBottom - plotMetrics.plotTop, pricePan),
+    [displayMode, placedCandles, plotMetrics.mainBottom, plotMetrics.plotTop, pricePan],
+  );
+
+  const yScale = useCallback(
+    (v: number) => priceToY(v, priceScale.range, plotMetrics.plotTop, plotMetrics.mainBottom),
+    [plotMetrics.mainBottom, plotMetrics.plotTop, priceScale.range],
+  );
+
+  const xLabels = useMemo(() => {
+    if (useCenterAnchor) {
+      const centerTimeMs = liveCenterTimeMsFromCandles(allCandles, axisNow);
+      return buildCenterAnchoredTimeLabels(
+        visibleCount,
+        plotMetrics.plotLeft,
+        plotMetrics.slotW,
+        chartTimeframeMs,
+        centerTimeMs,
+        layout.minLabelGapPx,
+        layout.fonts.axis,
+      );
+    }
+    return buildTimeAxisLabels(
+      placedCandles.map((c) => ({ candle: c, globalIndex: c._idx, slot: c._slot })),
+      plotMetrics.plotLeft,
+      plotMetrics.slotW,
+      chartTimeframeMs,
+      layout.minLabelGapPx,
+      layout.fonts.axis,
+    );
+  }, [
+    allCandles,
+    axisNow,
+    chartTimeframeMs,
+    layout.fonts.axis,
+    layout.minLabelGapPx,
+    placedCandles,
+    plotMetrics.plotLeft,
+    plotMetrics.slotW,
+    useCenterAnchor,
+    visibleCount,
+  ]);
+
+  const badgeW = useMemo(() => {
+    const last = placedCandles[placedCandles.length - 1];
+    const price = last?.close ?? 0;
+    return Math.min(layout.priceAxisWidth - 4, currentPriceBadgeWidth(price, layout.fonts.badge));
+  }, [layout.fonts.badge, layout.priceAxisWidth, placedCandles]);
+
   const handleChartContextMenu = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
       if (allCandles.length === 0) return;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const x = e.clientX - rect.left;
-      const plotLeft = PAD.left;
-      const plotRight = size.w - PAD.right;
+      const { plotLeft, plotRight, slotW } = plotMetrics;
       if (x < plotLeft || x > plotRight) return;
-      const slotW = (plotRight - plotLeft) / Math.max(visibleCount, 1);
       const idx = useCenterAnchor
-        ? nearestPlacedCandleIndex(x, plotLeft, slotW, placedCandles)
-        : nearestCandleIndex(
-            x,
-            plotLeft,
-            slotW,
-            placedCandles[0]?._idx ?? 0,
-            placedCandles.length,
-          );
-      if (idx == null) return;
+        ? (nearestPlacedCandleIndex(x, plotLeft, slotW, placedCandles) ?? placedCandles[0]?._idx ?? 0)
+        : nearestCandleIndex(x, plotLeft, slotW, placedCandles[0]?._idx ?? 0, placedCandles.length);
       openContextMenu(e, idx);
     },
-    [allCandles.length, openContextMenu, placedCandles, size.w, useCenterAnchor, visibleCount],
+    [allCandles.length, openContextMenu, placedCandles, plotMetrics, useCenterAnchor],
   );
 
   const handleWheel = useCallback(
@@ -324,6 +355,10 @@ export function ForexCandlestickChart({
         if (e.ctrlKey || e.metaKey) {
           if (e.deltaY < 0) zoomIn();
           else if (e.deltaY > 0) zoomOut();
+        } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+          const delta = Math.abs(e.deltaX) > 0 ? e.deltaX : e.deltaY;
+          setFollowLatest(false);
+          setScrollOffset((o) => panByWheelSteps(o, delta, panMax, 2, 0));
         } else {
           setPricePan((p) => {
             const step = 0.06;
@@ -333,13 +368,13 @@ export function ForexCandlestickChart({
         return;
       }
       const horizontal = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
-      if (horizontal) {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.deltaY < 0) zoomIn();
+        else if (e.deltaY > 0) zoomOut();
+      } else if (horizontal) {
         const delta = Math.abs(e.deltaX) > 0 ? e.deltaX : e.deltaY;
         setFollowLatest(false);
         setScrollOffset((o) => panByWheelSteps(o, delta, panMax, 2, 0));
-      } else if (e.ctrlKey || e.metaKey) {
-        if (e.deltaY < 0) zoomIn();
-        else if (e.deltaY > 0) zoomOut();
       } else {
         setFollowLatest(false);
         setPricePan((p) => {
@@ -354,16 +389,20 @@ export function ForexCandlestickChart({
   const handlePointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (allCandles.length === 0) return;
+      const rect = containerRef.current?.getBoundingClientRect();
+      const x = rect ? e.clientX - rect.left : 0;
+      const onPriceAxis = rect && x >= plotMetrics.plotRight - 4;
       dragRef.current = {
         active: true,
         startX: e.clientX,
         startY: e.clientY,
         startOffset: scrollOffset,
         startPricePan: pricePan,
+        axis: onPriceAxis ? "price" : "time",
       };
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [allCandles.length, pricePan, scrollOffset],
+    [allCandles.length, plotMetrics.plotRight, pricePan, scrollOffset],
   );
 
   const handlePointerMove = useCallback(
@@ -375,89 +414,52 @@ export function ForexCandlestickChart({
 
       if (!dragRef.current.active) return;
 
-      if (useCenterAnchor) {
+      if (dragRef.current.axis === "price") {
         const deltaY = e.clientY - dragRef.current.startY;
         setPricePan(dragRef.current.startPricePan + deltaY * 0.003);
         return;
       }
 
-      const slotW = (size.w - PAD.left - PAD.right) / Math.max(visibleCount, 1);
       const deltaX = e.clientX - dragRef.current.startX;
-      setFollowLatest(false);
-      setScrollOffset(panByPixels(dragRef.current.startOffset, -deltaX, slotW, panMax, 0));
+      if (useCenterAnchor || dragRef.current.axis === "time") {
+        setFollowLatest(false);
+        setScrollOffset(
+          panByPixels(dragRef.current.startOffset, -deltaX, plotMetrics.slotW, panMax, 0),
+        );
+      }
     },
-    [panMax, size.w, useCenterAnchor, visibleCount],
+    [panMax, plotMetrics.slotW, useCenterAnchor],
   );
 
   const handlePointerUp = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     dragRef.current.active = false;
+    dragRef.current.axis = null;
     e.currentTarget.releasePointerCapture(e.pointerId);
   }, []);
 
   const handlePointerLeave = useCallback(() => {
     dragRef.current.active = false;
+    dragRef.current.axis = null;
     setCrosshair(null);
   }, []);
 
   const chart = useMemo(() => {
-    const W = size.w;
-    const H = size.h;
+    const { plotLeft, plotRight, plotTop, plotBottom, mainBottom, slotW, bodyW, wickW, volumeH } =
+      plotMetrics;
     const candles = placedCandles;
     const mode = displayMode;
-    const slotCount = visibleCount;
 
-    if (candles.length === 0 || W < 10 || H < 10) {
+    if (candles.length === 0 || size.w < 10 || size.h < 10) {
       return {
         seriesLayer: [] as ReactNode[],
         volumeBars: [] as ReactNode[],
-        yMin: -10,
-        yMax: 10,
-        plotLeft: PAD.left,
-        plotRight: W - PAD.right,
-        plotTop: PAD.top,
-        plotBottom: H - PAD.bottom,
-        mainBottom: H - PAD.bottom,
-        xLabels: [] as { x: number; label: string; idx: number }[],
-        yScale: (_v: number) => H / 2,
-        currentY: H / 2,
+        currentY: size.h / 2,
         currentPrice: 0,
-        slotW: 10,
-        zeroLineY: H / 2,
+        zeroLineY: size.h / 2,
       };
     }
 
-    let yLo = Infinity;
-    let yHi = -Infinity;
-    let maxVol = 0;
-    for (const c of candles) {
-      yLo = Math.min(yLo, c.low);
-      yHi = Math.max(yHi, c.high);
-      if (mode !== "candles") {
-        yLo = Math.min(yLo, c.close);
-        yHi = Math.max(yHi, c.close);
-      }
-      maxVol = Math.max(maxVol, c.volume);
-    }
-    const padY = Math.max(8, (yHi - yLo) * 0.12 || 20);
-    const range = yHi - yLo + padY * 2;
-    const panPx = pricePan * range;
-    yLo -= padY - panPx;
-    yHi += padY - panPx;
-
-    const plotLeft = PAD.left;
-    const plotRight = W - PAD.right;
-    const plotTop = PAD.top;
-    const plotBottom = H - PAD.bottom;
-    const volumeH = Math.max(18, (plotBottom - plotTop) * VOLUME_H_RATIO);
-    const mainBottom = plotBottom - volumeH - 4;
-    const plotW = plotRight - plotLeft;
-    const { slotW, bodyW, wickW } = computeCandleGeometry(plotW, slotCount);
-
-    const yScale = (v: number) => plotTop + ((yHi - v) / (yHi - yLo)) * (mainBottom - plotTop);
-    const zeroLineY = yScale(0);
-
     const cxAt = (slot: number) => plotLeft + slot * slotW + slotW / 2;
-
     let seriesLayer: ReactNode[] = [];
 
     if (mode === "candles") {
@@ -469,7 +471,6 @@ export function ForexCandlestickChart({
         const h = Math.max(1, Math.abs(yClose - yOpen));
         const color = c.bullish ? TV.bull : TV.bear;
         const sel = selectedIdx === c._idx;
-        // Keep a thin visible stick on every candle (extend slightly past the body when flat).
         const yHigh = Math.min(yScale(c.high), top - MIN_WICK_PX);
         const yLow = Math.max(yScale(c.low), top + h + MIN_WICK_PX);
 
@@ -477,7 +478,7 @@ export function ForexCandlestickChart({
           <g
             key={`${c.id}-${c._idx}`}
             onClick={() => setSelectedIdx(sel ? null : c._idx)}
-            onContextMenu={(e) => openContextMenu(e, c._idx)}
+            onContextMenu={(ev) => openContextMenu(ev, c._idx)}
             className="cursor-pointer"
           >
             {sel && (
@@ -489,15 +490,7 @@ export function ForexCandlestickChart({
                 fill="rgba(41,98,255,0.06)"
               />
             )}
-            <line
-              x1={cx}
-              x2={cx}
-              y1={yHigh}
-              y2={yLow}
-              stroke={color}
-              strokeWidth={wickW}
-              strokeLinecap="round"
-            />
+            <line x1={cx} x2={cx} y1={yHigh} y2={yLow} stroke={color} strokeWidth={wickW} strokeLinecap="round" />
             <rect
               x={cx - bodyW / 2}
               y={top}
@@ -511,9 +504,61 @@ export function ForexCandlestickChart({
           </g>
         );
       });
+    } else if (mode === "bars") {
+      const tickW = Math.max(2, Math.min(bodyW, slotW * 0.35));
+      seriesLayer = candles.map((c) => {
+        const cx = cxAt(c._slot);
+        const color = c.bullish ? TV.bull : TV.bear;
+        const sel = selectedIdx === c._idx;
+        const yHigh = yScale(c.high);
+        const yLow = yScale(c.low);
+        const yOpen = yScale(c.open);
+        const yClose = yScale(c.close);
+
+        return (
+          <g
+            key={`bar-${c.id}-${c._idx}`}
+            onClick={() => setSelectedIdx(sel ? null : c._idx)}
+            onContextMenu={(ev) => openContextMenu(ev, c._idx)}
+            className="cursor-pointer"
+          >
+            {sel && (
+              <rect
+                x={plotLeft + c._slot * slotW}
+                y={plotTop}
+                width={slotW}
+                height={mainBottom - plotTop}
+                fill="rgba(41,98,255,0.06)"
+              />
+            )}
+            <line x1={cx} x2={cx} y1={yHigh} y2={yLow} stroke={color} strokeWidth={wickW} strokeLinecap="round" />
+            <line
+              x1={cx - tickW}
+              x2={cx}
+              y1={yOpen}
+              y2={yOpen}
+              stroke={color}
+              strokeWidth={Math.max(1, wickW)}
+              strokeLinecap="round"
+            />
+            <line
+              x1={cx}
+              x2={cx + tickW}
+              y1={yClose}
+              y2={yClose}
+              stroke={color}
+              strokeWidth={Math.max(1, wickW)}
+              strokeLinecap="round"
+            />
+          </g>
+        );
+      });
     } else {
       const pts = candles.map((c) => `${cxAt(c._slot)},${yScale(c.close)}`).join(" ");
       const lineColor = candles[candles.length - 1]!.close >= 0 ? TV.bull : TV.bear;
+      const zeroLineY = yScale(0);
+      const dotR = candles.length <= 12 ? 3.5 : candles.length <= 40 ? 2.5 : 1.5;
+      const strokeW = candles.length <= 12 ? 2.25 : candles.length <= 40 ? 1.75 : 1.25;
 
       if (mode === "area") {
         const baseline = zeroLineY >= plotTop && zeroLineY <= mainBottom ? zeroLineY : mainBottom;
@@ -538,24 +583,23 @@ export function ForexCandlestickChart({
             points={pts}
             fill="none"
             stroke={lineColor}
-            strokeWidth={candles.length <= 12 ? 2.25 : candles.length <= 40 ? 1.75 : 1.25}
+            strokeWidth={strokeW}
             strokeLinejoin="round"
             strokeLinecap="round"
           />,
           ...candles.map((c) => {
             const sel = selectedIdx === c._idx;
-            const r = candles.length <= 12 ? 3.5 : candles.length <= 40 ? 2.5 : 1.5;
             return (
               <circle
                 key={`pt-${c.id}`}
                 cx={cxAt(c._slot)}
                 cy={yScale(c.close)}
-                r={sel ? r + 1 : r}
+                r={sel ? dotR + 1 : dotR}
                 fill={sel ? "#2962ff" : lineColor}
                 stroke={sel ? "#fff" : "none"}
                 strokeWidth={sel ? 1 : 0}
                 onClick={() => setSelectedIdx(sel ? null : c._idx)}
-                onContextMenu={(e) => openContextMenu(e, c._idx)}
+                onContextMenu={(ev) => openContextMenu(ev, c._idx)}
                 className="cursor-pointer"
               />
             );
@@ -568,24 +612,23 @@ export function ForexCandlestickChart({
             points={pts}
             fill="none"
             stroke={lineColor}
-            strokeWidth={candles.length <= 12 ? 2.25 : candles.length <= 40 ? 1.75 : 1.25}
+            strokeWidth={strokeW}
             strokeLinejoin="round"
             strokeLinecap="round"
           />,
           ...candles.map((c) => {
             const sel = selectedIdx === c._idx;
-            const r = candles.length <= 12 ? 3.5 : candles.length <= 40 ? 2.5 : 1.5;
             return (
               <circle
                 key={`pt-${c.id}`}
                 cx={cxAt(c._slot)}
                 cy={yScale(c.close)}
-                r={sel ? r + 1 : r}
+                r={sel ? dotR + 1 : dotR}
                 fill={sel ? "#2962ff" : lineColor}
                 stroke={sel ? "#fff" : "none"}
                 strokeWidth={sel ? 1 : 0}
                 onClick={() => setSelectedIdx(sel ? null : c._idx)}
-                onContextMenu={(e) => openContextMenu(e, c._idx)}
+                onContextMenu={(ev) => openContextMenu(ev, c._idx)}
                 className="cursor-pointer"
               />
             );
@@ -594,9 +637,10 @@ export function ForexCandlestickChart({
       }
     }
 
+    const maxVol = candles.reduce((m, c) => Math.max(m, c.volume), 0);
     const volumeBars = candles.map((c) => {
       const barH = maxVol > 0 ? (c.volume / maxVol) * (volumeH - 2) : 0;
-      const volW = Math.max(1, slotW * (slotCount <= 16 ? 0.88 : slotCount <= 48 ? 0.72 : 0.55));
+      const volW = Math.max(1, slotW * (visibleCount <= 16 ? 0.88 : visibleCount <= 48 ? 0.72 : 0.55));
       const x = plotLeft + c._slot * slotW + (slotW - volW) / 2;
       return (
         <rect
@@ -611,55 +655,42 @@ export function ForexCandlestickChart({
       );
     });
 
-    const labelEvery = Math.max(1, Math.ceil(candles.length / Math.max(4, Math.floor(plotW / 90))));
-    const xLabels = candles
-      .map((c, i) => ({
-        idx: c._idx,
-        label: c.label.replace("*", ""),
-        x: cxAt(c._slot),
-      }))
-      .filter((_, i) => i % labelEvery === 0 || i === candles.length - 1);
-
     const last = candles[candles.length - 1]!;
-    const currentPrice = last.close;
-    const currentY = yScale(currentPrice);
-
     return {
       seriesLayer,
       volumeBars,
-      yMin: yLo,
-      yMax: yHi,
-      plotLeft,
-      plotRight,
-      plotTop,
-      plotBottom,
-      mainBottom,
-      xLabels,
-      yScale,
-      currentY,
-      currentPrice,
-      slotW,
-      zeroLineY,
+      currentY: yScale(last.close),
+      currentPrice: last.close,
+      zeroLineY: yScale(0),
     };
-  }, [placedCandles, pricePan, size, selectedIdx, displayMode, openContextMenu, visibleCount]);
+  }, [
+    displayMode,
+    openContextMenu,
+    placedCandles,
+    plotMetrics,
+    selectedIdx,
+    size.h,
+    size.w,
+    visibleCount,
+    yScale,
+  ]);
 
-  const yTicks = useMemo(() => {
-    const steps = Math.max(4, Math.floor((size.h - 40) / 70));
-    const rangeY = chart.yMax - chart.yMin;
-    return Array.from({ length: steps }, (_, i) => chart.yMin + (rangeY * i) / (steps - 1));
-  }, [chart.yMax, chart.yMin, size.h]);
-
-  const zeroY = chart.yScale(0);
-  const showZero = zeroY >= chart.plotTop && zeroY <= chart.mainBottom;
+  const zeroY = chart.zeroLineY;
+  const showZero = zeroY >= plotMetrics.plotTop && zeroY <= plotMetrics.mainBottom;
 
   const crosshairCandleIdx =
     crosshair != null
       ? useCenterAnchor
-        ? nearestPlacedCandleIndex(crosshair.x, chart.plotLeft, chart.slotW, placedCandles)
+        ? nearestPlacedCandleIndex(
+            crosshair.x,
+            plotMetrics.plotLeft,
+            plotMetrics.slotW,
+            placedCandles,
+          )
         : nearestCandleIndex(
             crosshair.x,
-            chart.plotLeft,
-            chart.slotW,
+            plotMetrics.plotLeft,
+            plotMetrics.slotW,
             placedCandles[0]?._idx ?? 0,
             placedCandles.length,
           )
@@ -668,113 +699,59 @@ export function ForexCandlestickChart({
   const crosshairPlaced = placedCandles.find((c) => c._idx === crosshairCandleIdx);
   const crosshairX =
     crosshairPlaced != null
-      ? chart.plotLeft + (crosshairPlaced._slot + 0.5) * chart.slotW
+      ? plotMetrics.plotLeft + (crosshairPlaced._slot + 0.5) * plotMetrics.slotW
       : crosshair?.x ?? 0;
 
   const focus =
     selectedIdx != null ? allCandles[selectedIdx] : crosshairCandle ?? allCandles[allCandles.length - 1];
-  const focusChange =
-    focus && allCandles.length > 1
-      ? focus.close - focus.open
-      : 0;
+  const focusChange = focus && allCandles.length > 1 ? focus.close - focus.open : 0;
   const focusBull = focusChange >= 0;
 
-  const timeframeLabel = timeframes.find((tf) => tf.id === timeframeId)?.label;
-  const detailUserCandle = detailCandleIdx != null ? userCandles[detailCandleIdx] ?? null : null;
-  const detailHouseCandle = detailCandleIdx != null ? houseCandles[detailCandleIdx] ?? null : null;
+  const focusPeriodStats = useMemo(() => {
+    if (!focus || chartHistory.length === 0) return null;
+    return summarizeCandlePeriod(chartHistory, focus);
+  }, [chartHistory, focus]);
+
+  const timeframeLabel = CHART_TIMEFRAMES.find((tf) => tf.id === timeframeId)?.label ?? timeframeId;
+
+  const crosshairPeriodStats = useMemo(() => {
+    if (!crosshairCandle || chartHistory.length === 0) return null;
+    return summarizeCandlePeriod(chartHistory, crosshairCandle);
+  }, [chartHistory, crosshairCandle]);
+  const detailUserCandle = detailCandleIdx != null ? (userCandles[detailCandleIdx] ?? null) : null;
+  const detailHouseCandle = detailCandleIdx != null ? (houseCandles[detailCandleIdx] ?? null) : null;
 
   const crosshairY =
-    crosshair && crosshair.y >= chart.plotTop && crosshair.y <= chart.mainBottom
+    crosshair && crosshair.y >= plotMetrics.plotTop && crosshair.y <= plotMetrics.mainBottom
       ? crosshair.y
       : null;
 
+  const axisFont = layout.fonts.axis;
+  const statusFont = layout.fonts.status;
+  const hintFont = layout.fonts.hint;
+
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", className)} style={{ background: TV.bg }}>
-      <div
-        className="flex shrink-0 items-center gap-1 border-b px-2 py-1"
-        style={{ borderColor: TV.gridBold, background: TV.bg }}
-      >
-        {series.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => {
-              setActiveId(s.id);
-              setSelectedIdx(null);
-            }}
-            className={cn(
-              "rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
-              activeId === s.id ? "text-[#2962ff]" : "text-[#787b86] hover:text-[#d1d4dc]",
-            )}
-          >
-            {s.shortLabel}
-          </button>
-        ))}
-        <span className="mx-1 text-[#2a2e39]">|</span>
-        {CHART_MODES.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => setDisplayMode(m.id)}
-            className={cn(
-              "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors",
-              displayMode === m.id ? "text-[#2962ff]" : "text-[#787b86] hover:text-[#d1d4dc]",
-            )}
-          >
-            {m.label}
-          </button>
-        ))}
-        <span className="mx-1 text-[#2a2e39]">|</span>
-        <div className="flex max-w-[40%] gap-0.5 overflow-x-auto">
-          {timeframes.map((tf) => (
-            <button
-              key={tf.id}
-              type="button"
-              onClick={() => onTimeframeChange?.(tf.id)}
-              className={cn(
-                "shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors",
-                timeframeId === tf.id ? "text-[#2962ff]" : "text-[#787b86] hover:text-[#d1d4dc]",
-              )}
-            >
-              {tf.label}
-            </button>
-          ))}
-        </div>
-        {live && (
-          <span className="ml-1 shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#26a69a]">
-            ● Live
-          </span>
-        )}
-        {live && (
-          <span className="ml-1 hidden shrink-0 text-[9px] text-[#787b86] sm:inline" title="Chart times use your device clock">
-            {chartLocalTimeZone()}
-          </span>
-        )}
-        {!followLatest && (
-          <button
-            type="button"
-            onClick={goToLatest}
-            className="ml-1 flex shrink-0 items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] text-[#2962ff] hover:bg-[#2a2e39]"
-            title="Jump to latest"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Latest
-          </button>
-        )}
-        {liveStats && (
-          <span className="ml-2 hidden shrink-0 text-[10px] tabular-nums text-[#787b86] sm:inline">
-            G {liveStats.games.toLocaleString()}/{liveStats.target.toLocaleString()}
-          </span>
-        )}
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
-          <button type="button" onClick={zoomOut} className="flex h-6 w-6 items-center justify-center rounded text-[#787b86] hover:bg-[#2a2e39] hover:text-[#d1d4dc]" aria-label="Zoom out">
-            <Minus className="h-3.5 w-3.5" />
-          </button>
-          <button type="button" onClick={zoomIn} className="flex h-6 w-6 items-center justify-center rounded text-[#787b86] hover:bg-[#2a2e39] hover:text-[#d1d4dc]" aria-label="Zoom in">
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
+      <ForexCandlestickChartToolbar
+        series={series}
+        activeId={activeId}
+        onSeriesChange={(id) => {
+          setActiveId(id);
+          setSelectedIdx(null);
+        }}
+        displayMode={displayMode}
+        onDisplayModeChange={setDisplayMode}
+        timeframeId={timeframeId}
+        onTimeframeChange={onTimeframeChange}
+        live={live}
+        layout={layout}
+        followLatest={followLatest}
+        onGoToLatest={goToLatest}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        liveStats={liveStats}
+        totalCandles={allCandles.length}
+      />
 
       <div
         ref={containerRef}
@@ -790,87 +767,229 @@ export function ForexCandlestickChart({
         {allCandles.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center text-xs text-[#787b86]">
             <p>No session data yet.</p>
-            <p className="text-[10px] text-[#434651]">Play a game or run auto sim — candles build from your session history.</p>
+            <p className="text-[10px] text-[#434651]">
+              Play a game or run auto sim — candles build from your session history.
+            </p>
           </div>
         ) : (
           <>
             {focus && (
-              <div className="pointer-events-none absolute left-2 top-1 z-10 flex flex-wrap items-baseline gap-x-2 gap-y-0 text-[11px] tabular-nums">
+              <div
+                className="pointer-events-none absolute left-1 top-0.5 z-10 flex flex-wrap items-baseline gap-x-1.5 gap-y-0 tabular-nums sm:left-2 sm:top-1 sm:gap-x-2"
+                style={{ fontSize: statusFont, maxWidth: layout.statusLineMaxWidth }}
+              >
                 <span className="font-semibold text-[#d1d4dc]">{active?.label}</span>
-                <span className="text-[#787b86]">·</span>
-                {displayMode === "candles" ? (
+                <span
+                  className="rounded px-1 py-px text-[9px] font-semibold text-[#2962ff]"
+                  style={{ background: "rgba(41,98,255,0.12)" }}
+                >
+                  {timeframeLabel}
+                </span>
+                <span className="hidden text-[#787b86] sm:inline">·</span>
+                {(displayMode === "candles" || displayMode === "bars") && layout.toolbar.showOhlcHighLow && (
                   <>
-                    <span className="text-[#787b86]">O <span style={{ color: focus.open >= 0 ? TV.bull : TV.bear }}>{fmtOhlc(focus.open)}</span></span>
-                    <span className="text-[#787b86]">H <span style={{ color: TV.bull }}>{fmtOhlc(focus.high)}</span></span>
-                    <span className="text-[#787b86]">L <span style={{ color: TV.bear }}>{fmtOhlc(focus.low)}</span></span>
+                    <span className="text-[#787b86]">
+                      O <span style={{ color: focus.open >= 0 ? TV.bull : TV.bear }}>{formatOhlc(focus.open)}</span>
+                    </span>
+                    <span className="text-[#787b86]">
+                      H <span style={{ color: TV.bull }}>{formatOhlc(focus.high)}</span>
+                    </span>
+                    <span className="text-[#787b86]">
+                      L <span style={{ color: TV.bear }}>{formatOhlc(focus.low)}</span>
+                    </span>
                   </>
-                ) : null}
-                <span className="text-[#787b86]">C <span style={{ color: focus.close >= 0 ? TV.bull : TV.bear }}>{fmtOhlc(focus.close)}</span></span>
-                <span style={{ color: focusBull ? TV.bull : TV.bear }}>{fmtPrice(focusChange)}</span>
-                {focus.timeStart != null && <span className="text-[#434651]">{focus.label}</span>}
+                )}
+                <span className="text-[#787b86]">
+                  C <span style={{ color: focus.close >= 0 ? TV.bull : TV.bear }}>{formatOhlc(focus.close)}</span>
+                </span>
+                <span style={{ color: focusBull ? TV.bull : TV.bear }}>{formatPriceDisplay(focusChange)}</span>
+                {focusPeriodStats && (
+                  <span className="hidden text-[#787b86] md:inline">
+                    Vol {formatPriceDisplay(focusPeriodStats.totalVolume)} · {focusPeriodStats.gamesPlayed} rnd
+                  </span>
+                )}
+                {focus.timeStart != null && (
+                  <span className="hidden text-[#434651] lg:inline">{focus.label}</span>
+                )}
+                {layout.toolbar.showTimezone && (
+                  <span className="hidden text-[#434651] xl:inline">{chartLocalTimeZone()}</span>
+                )}
               </div>
             )}
 
-            {canPanOlder && !useCenterAnchor && (
-              <div className="pointer-events-none absolute right-2 top-1 z-10 text-[9px] text-[#434651]">
-                Scroll ↑↓ price · Ctrl+scroll zoom · Shift+scroll time
-              </div>
-            )}
-            {useCenterAnchor && (
-              <div className="pointer-events-none absolute right-2 top-1 z-10 text-[9px] text-[#434651]">
-                Drag ↑↓ price · Ctrl+scroll zoom · +/- compress candles
+            {layout.toolbar.showHints && (
+              <div
+                className="pointer-events-none absolute right-1 top-0.5 z-10 max-w-[48%] text-right text-[#434651] sm:right-2 sm:top-1 sm:max-w-none"
+                style={{ fontSize: hintFont }}
+              >
+                {useCenterAnchor
+                  ? "Live center · drag ↔ history · scroll price · shift+scroll time"
+                  : "Drag ↔ time · price axis · Shift+scroll · Ctrl zoom"}
               </div>
             )}
 
-            <svg width={size.w} height={size.h} className="block" role="img" aria-label="Simulation candlestick chart">
+            <svg width={size.w} height={size.h} className="block" role="img" aria-label="Block game candlestick chart">
               <defs>
                 <clipPath id="chart-plot-clip">
-                  <rect x={chart.plotLeft} y={chart.plotTop} width={chart.plotRight - chart.plotLeft} height={chart.plotBottom - chart.plotTop} />
+                  <rect
+                    x={plotMetrics.plotLeft}
+                    y={plotMetrics.plotTop}
+                    width={plotMetrics.plotRight - plotMetrics.plotLeft}
+                    height={plotMetrics.plotBottom - plotMetrics.plotTop}
+                  />
                 </clipPath>
               </defs>
               <rect width={size.w} height={size.h} fill={TV.bg} />
-              {yTicks.map((tick) => {
-                const y = chart.yScale(tick);
-                return <line key={`h-${tick}`} x1={chart.plotLeft} x2={chart.plotRight} y1={y} y2={y} stroke={TV.grid} strokeWidth={1} />;
+
+              {priceScale.ticks.map((tick) => {
+                const y = yScale(tick);
+                if (y < plotMetrics.plotTop - 1 || y > plotMetrics.plotBottom + 1) return null;
+                return (
+                  <line
+                    key={`h-${tick}`}
+                    x1={plotMetrics.plotLeft}
+                    x2={plotMetrics.plotRight}
+                    y1={y}
+                    y2={y}
+                    stroke={TV.grid}
+                    strokeWidth={1}
+                  />
+                );
               })}
+
               {Array.from({ length: Math.min(visibleCount, 24) }, (_, i) => {
                 const step = Math.max(1, Math.ceil(visibleCount / 24));
                 if (i % step !== 0) return null;
-                const x = chart.plotLeft + i * chart.slotW;
-                return <line key={`v-${i}`} x1={x} x2={x} y1={chart.plotTop} y2={chart.plotBottom} stroke={TV.grid} strokeWidth={1} />;
-              })}
-              {showZero && (
-                <line x1={chart.plotLeft} x2={chart.plotRight} y1={zeroY} y2={zeroY} stroke={TV.gridBold} strokeWidth={1} strokeDasharray="4 4" />
-              )}
-              <g clipPath="url(#chart-plot-clip)">{chart.seriesLayer}</g>
-              <line x1={chart.plotLeft} x2={chart.plotRight} y1={chart.mainBottom + 2} y2={chart.mainBottom + 2} stroke={TV.gridBold} strokeWidth={1} />
-              <g clipPath="url(#chart-plot-clip)">{chart.volumeBars}</g>
-              <text x={chart.plotLeft + 2} y={chart.plotBottom - 2} fill={TV.muted} fontSize={8}>Vol</text>
-              <line x1={chart.plotLeft} x2={chart.plotRight} y1={chart.currentY} y2={chart.currentY} stroke={chart.currentPrice >= 0 ? TV.bull : TV.bear} strokeWidth={1} strokeDasharray="3 3" opacity={0.85} />
-              {yTicks.map((tick) => {
-                const y = chart.yScale(tick);
-                const isCurrent = Math.abs(tick - chart.currentPrice) < (chart.yMax - chart.yMin) * 0.04;
-                if (isCurrent) return null;
+                const x = plotMetrics.plotLeft + i * plotMetrics.slotW;
                 return (
-                  <text key={`yl-${tick}`} x={chart.plotRight + 6} y={y + 3.5} fill={tick > 0 ? TV.bull : tick < 0 ? TV.bear : TV.muted} fontSize={10}>
-                    {fmtPriceAxis(tick)}
+                  <line
+                    key={`v-${i}`}
+                    x1={x}
+                    x2={x}
+                    y1={plotMetrics.plotTop}
+                    y2={plotMetrics.plotBottom}
+                    stroke={TV.grid}
+                    strokeWidth={1}
+                  />
+                );
+              })}
+
+              {showZero && (
+                <line
+                  x1={plotMetrics.plotLeft}
+                  x2={plotMetrics.plotRight}
+                  y1={zeroY}
+                  y2={zeroY}
+                  stroke={TV.gridBold}
+                  strokeWidth={1}
+                  strokeDasharray="4 4"
+                />
+              )}
+
+              <g clipPath="url(#chart-plot-clip)">{chart.seriesLayer}</g>
+
+              <line
+                x1={plotMetrics.plotLeft}
+                x2={plotMetrics.plotRight}
+                y1={plotMetrics.mainBottom + 2}
+                y2={plotMetrics.mainBottom + 2}
+                stroke={TV.gridBold}
+                strokeWidth={1}
+              />
+              <g clipPath="url(#chart-plot-clip)">{chart.volumeBars}</g>
+
+              {plotMetrics.mainBottom - plotMetrics.plotTop > 50 && (
+                <text
+                  x={plotMetrics.plotLeft + 2}
+                  y={plotMetrics.plotBottom - 2}
+                  fill={TV.muted}
+                  fontSize={Math.max(7, axisFont - 1)}
+                >
+                  Vol
+                </text>
+              )}
+
+              <line
+                x1={plotMetrics.plotLeft}
+                x2={plotMetrics.plotRight}
+                y1={chart.currentY}
+                y2={chart.currentY}
+                stroke={chart.currentPrice >= 0 ? TV.bull : TV.bear}
+                strokeWidth={1}
+                strokeDasharray="3 3"
+                opacity={0.85}
+              />
+
+              {priceScale.ticks.map((tick) => {
+                const y = yScale(tick);
+                const isCurrent = Math.abs(tick - chart.currentPrice) < (priceScale.range.max - priceScale.range.min) * 0.04;
+                if (isCurrent || y < plotMetrics.plotTop || y > plotMetrics.plotBottom) return null;
+                return (
+                  <text
+                    key={`yl-${tick}`}
+                    x={plotMetrics.plotRight + 4}
+                    y={y + axisFont * 0.35}
+                    fill={tick > 0 ? TV.bull : tick < 0 ? TV.bear : TV.muted}
+                    fontSize={axisFont}
+                  >
+                    {formatPriceAxis(tick)}
                   </text>
                 );
               })}
-              <rect x={chart.plotRight + 2} y={chart.currentY - 9} width={62} height={18} rx={2} fill={chart.currentPrice >= 0 ? TV.bull : TV.bear} />
-              <text x={chart.plotRight + 33} y={chart.currentY + 4} textAnchor="middle" fill="#fff" fontSize={10} fontWeight="600">
-                {fmtPriceAxis(chart.currentPrice)}
+
+              <rect
+                x={plotMetrics.plotRight + 2}
+                y={chart.currentY - axisFont * 0.9}
+                width={badgeW}
+                height={axisFont + 8}
+                rx={2}
+                fill={chart.currentPrice >= 0 ? TV.bull : TV.bear}
+              />
+              <text
+                x={plotMetrics.plotRight + 2 + badgeW / 2}
+                y={chart.currentY + axisFont * 0.3}
+                textAnchor="middle"
+                fill="#fff"
+                fontSize={axisFont}
+                fontWeight="600"
+              >
+                {formatPriceAxis(chart.currentPrice)}
               </text>
-              {(fixedLiveXLabels ?? chart.xLabels).map(({ x, label, idx }) => (
-                <text key={`x-${idx}`} x={x} y={size.h - 6} textAnchor="middle" fill={selectedIdx === idx || crosshairCandleIdx === idx ? "#2962ff" : TV.muted} fontSize={9}>
+
+              {xLabels.map(({ x, label, idx }) => (
+                <text
+                  key={`x-${idx}`}
+                  x={x}
+                  y={size.h - 4}
+                  textAnchor="middle"
+                  fill={selectedIdx === idx || crosshairCandleIdx === idx ? "#2962ff" : TV.muted}
+                  fontSize={axisFont}
+                >
                   {label}
                 </text>
               ))}
-              {crosshair && crosshair.x >= chart.plotLeft && crosshair.x <= chart.plotRight && (
+
+              {crosshair && crosshair.x >= plotMetrics.plotLeft && crosshair.x <= plotMetrics.plotRight && (
                 <>
-                  <line x1={crosshairX} x2={crosshairX} y1={chart.plotTop} y2={chart.plotBottom} stroke={TV.crosshair} strokeWidth={1} strokeDasharray="4 3" />
+                  <line
+                    x1={crosshairX}
+                    x2={crosshairX}
+                    y1={plotMetrics.plotTop}
+                    y2={plotMetrics.plotBottom}
+                    stroke={TV.crosshair}
+                    strokeWidth={1}
+                    strokeDasharray="4 3"
+                  />
                   {crosshairY != null && (
-                    <line x1={chart.plotLeft} x2={chart.plotRight} y1={crosshairY} y2={crosshairY} stroke={TV.crosshair} strokeWidth={1} strokeDasharray="4 3" />
+                    <line
+                      x1={plotMetrics.plotLeft}
+                      x2={plotMetrics.plotRight}
+                      y1={crosshairY}
+                      y2={crosshairY}
+                      stroke={TV.crosshair}
+                      strokeWidth={1}
+                      strokeDasharray="4 3"
+                    />
                   )}
                 </>
               )}
@@ -878,21 +997,47 @@ export function ForexCandlestickChart({
 
             {crosshairCandle && crosshair && (
               <div
-                className="pointer-events-none absolute z-20 rounded border px-1.5 py-0.5 text-[9px] tabular-nums"
+                className="pointer-events-none absolute z-20 max-w-[min(200px,52vw)] rounded border px-2 py-1 tabular-nums"
                 style={{
-                  left: Math.min(crosshair.x + 8, size.w - 120),
-                  top: Math.max(4, crosshair.y - 28),
+                  left: Math.min(crosshair.x + 8, size.w - 200),
+                  top: Math.max(4, crosshair.y - 72),
                   borderColor: TV.gridBold,
-                  background: "rgba(28,32,48,0.92)",
+                  background: "rgba(28,32,48,0.94)",
                   color: TV.text,
+                  fontSize: hintFont,
                 }}
               >
-                <div className="text-[#787b86]">{crosshairCandle.label}</div>
-                <div style={{ color: crosshairCandle.close >= 0 ? TV.bull : TV.bear }}>{fmtPrice(crosshairCandle.close)}</div>
+                <div className="mb-0.5 flex items-center gap-1">
+                  <span className="font-semibold text-[#d1d4dc]">{timeframeLabel}</span>
+                  <span className="text-[#434651]">·</span>
+                  <span className="truncate text-[#787b86]">{crosshairCandle.label}</span>
+                </div>
+                {formatCandleTimeRange(crosshairCandle) && (
+                  <div className="mb-0.5 truncate text-[9px] text-[#434651]">
+                    {formatCandleTimeRange(crosshairCandle)}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-x-2 gap-y-0">
+                  <span className="text-[#787b86]">
+                    O <span style={{ color: crosshairCandle.open >= 0 ? TV.bull : TV.bear }}>{formatOhlc(crosshairCandle.open)}</span>
+                  </span>
+                  <span className="text-[#787b86]">
+                    H <span style={{ color: TV.bull }}>{formatOhlc(crosshairCandle.high)}</span>
+                  </span>
+                  <span className="text-[#787b86]">
+                    L <span style={{ color: TV.bear }}>{formatOhlc(crosshairCandle.low)}</span>
+                  </span>
+                  <span className="text-[#787b86]">
+                    C <span style={{ color: crosshairCandle.close >= 0 ? TV.bull : TV.bear }}>{formatOhlc(crosshairCandle.close)}</span>
+                  </span>
+                </div>
+                {crosshairPeriodStats && (
+                  <div className="mt-0.5 text-[9px] text-[#787b86]">
+                    {crosshairPeriodStats.gamesPlayed} rounds · Vol {formatPriceDisplay(crosshairPeriodStats.totalVolume)}
+                  </div>
+                )}
               </div>
             )}
-
-            <span className="pointer-events-none absolute bottom-6 left-2 text-[10px] font-semibold text-[#434651]">SimChart</span>
 
             {contextMenu && (
               <div
@@ -954,14 +1099,26 @@ export function ForexCandlestickChart({
       />
 
       {liveStats && (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-0.5 border-t px-3 py-1.5 text-[10px] tabular-nums" style={{ borderColor: TV.gridBold, background: "#1c2030" }}>
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-0.5 border-t px-2 py-1 text-[10px] tabular-nums sm:gap-x-4 sm:px-3 sm:py-1.5"
+          style={{ borderColor: TV.gridBold, background: "#1c2030", fontSize: layout.fonts.toolbar - 1 }}
+        >
           <span className="text-[#787b86]">
-            Net <span style={{ color: liveStats.userNet >= 0 ? TV.bull : TV.bear }}>{fmtPrice(liveStats.userNet)}</span>
+            Net{" "}
+            <span style={{ color: liveStats.userNet >= 0 ? TV.bull : TV.bear }}>
+              {formatPriceDisplay(liveStats.userNet)}
+            </span>
             <span className="text-[#434651]"> / </span>
-            <span style={{ color: liveStats.houseNet >= 0 ? TV.bull : TV.bear }}>{fmtPrice(liveStats.houseNet)}</span>
+            <span style={{ color: liveStats.houseNet >= 0 ? TV.bull : TV.bear }}>
+              {formatPriceDisplay(liveStats.houseNet)}
+            </span>
           </span>
-          <span className="text-[#787b86]">Games <span className="text-[#d1d4dc]">{liveStats.games.toLocaleString()}</span></span>
-          <span className="text-[#787b86]">RTP <span className="text-[#d1d4dc]">{(liveStats.rtp * 100).toFixed(1)}%</span></span>
+          <span className="text-[#787b86]">
+            Games <span className="text-[#d1d4dc]">{liveStats.games.toLocaleString()}</span>
+          </span>
+          <span className="hidden text-[#787b86] sm:inline">
+            RTP <span className="text-[#d1d4dc]">{(liveStats.rtp * 100).toFixed(1)}%</span>
+          </span>
           <span className="ml-auto text-[#787b86]">{liveStats.progressPct}%</span>
         </div>
       )}

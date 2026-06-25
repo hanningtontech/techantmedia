@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, BarChart3, Minus, Radio } from "lucide-react";
-import { BlockGamePlayerRoundsAnalysisPanel } from "./BlockGamePlayerRoundsAnalysisPanel";
 import { AdminField } from "@/components/admin/shared/AdminField";
 import { Button } from "@/components/ui/button";
+import { BLOCK_GAME_PLAYERS_ANALYSIS_PATH } from "@/lib/game/blockGamePlayersFirestore";
 import { formatKes } from "@/lib/game/formatKes";
 import {
   aggregatePlayerRounds,
@@ -72,7 +72,6 @@ function DeltaBadge({ current, previous }: { current: number; previous: number }
 export function BlockGamePlayerRevenuePanel() {
   const [period, setPeriod] = useState<PlayerRevenuePeriodId>("day");
   const [compare, setCompare] = useState(true);
-  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const [rounds, setRounds] = useState<BlockGamePlayerRoundDoc[]>([]);
   const [summary, setSummary] = useState<PlayerRevenueSummaryDoc | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -110,14 +109,10 @@ export function BlockGamePlayerRevenuePanel() {
 
   const houseAhead = current.adminNet >= 0;
 
-  if (showFullAnalysis) {
-    return (
-      <BlockGamePlayerRoundsAnalysisPanel
-        initialPeriod={period}
-        onBack={() => setShowFullAnalysis(false)}
-      />
-    );
-  }
+  const openFullAnalysis = () => {
+    const url = `${window.location.origin}${BLOCK_GAME_PLAYERS_ANALYSIS_PATH}?period=${period}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <div className="space-y-5">
@@ -258,7 +253,7 @@ export function BlockGamePlayerRevenuePanel() {
             size="sm"
             variant="outline"
             className="border-violet-500/30 text-violet-300 hover:bg-violet-500/10"
-            onClick={() => setShowFullAnalysis(true)}
+            onClick={openFullAnalysis}
           >
             <BarChart3 className="mr-1.5 h-3.5 w-3.5" />
             Full list analysis

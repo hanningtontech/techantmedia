@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft, Gamepad2, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
@@ -8,7 +8,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFirebaseAuth } from "@/contexts/FirebaseAuthContext";
 import { formatAuthOrFirestoreError } from "@/lib/authErrorMessage";
+import { ensureBlockGamePlayerRegistered } from "@/lib/game/blockGamePlayersFirestore";
 import { toast } from "sonner";
+
+function RegisterGamePlayerOnMount() {
+  const { user, profile } = useFirebaseAuth();
+  useEffect(() => {
+    if (!user) return;
+    void ensureBlockGamePlayerRegistered({
+      uid: user.uid,
+      userEmail: user.email ?? profile?.email ?? "",
+      userName: profile?.name ?? user.displayName ?? "",
+    }).catch(() => {});
+  }, [user, profile?.email, profile?.name]);
+  return null;
+}
 
 /** Requires a signed-in account before playing the block game. */
 export function GameAuthGate({ children }: { children: React.ReactNode }) {
@@ -21,7 +35,14 @@ export function GameAuthGate({ children }: { children: React.ReactNode }) {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
-  if (user && !loading) return <>{children}</>;
+  if (user && !loading) {
+    return (
+      <>
+        <RegisterGamePlayerOnMount />
+        {children}
+      </>
+    );
+  }
 
   if (!firebaseReady) {
     return (

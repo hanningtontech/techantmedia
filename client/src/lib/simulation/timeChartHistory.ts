@@ -32,6 +32,25 @@ export const CHART_TIMEFRAMES: ChartTimeframe[] = [
   { id: "1y", label: "1Y", ms: 31_536_000_000 },
 ];
 
+/** TradingView-style picker — every interval is selectable regardless of current span. */
+export const CHART_TIMEFRAME_GROUPS: { label: string; ids: string[] }[] = [
+  { label: "Seconds", ids: ["1s", "5s", "15s"] },
+  { label: "Minutes", ids: ["1m", "5m", "15m"] },
+  { label: "Hours", ids: ["1h", "4h"] },
+  { label: "Days", ids: ["1d", "1w", "1mo", "1y"] },
+];
+
+export function allChartTimeframesForPicker(): ChartTimeframe[] {
+  return CHART_TIMEFRAMES;
+}
+
+export function intervalBucketDescription(timeframeId: string): string {
+  const tf = CHART_TIMEFRAMES.find((t) => t.id === timeframeId);
+  const label = tf?.label ?? timeframeId;
+  return `Each ${label} candle = all rounds & P/L in that time bucket`;
+}
+
+
 const MAX_CANDLES = 500;
 
 export function chartDataSpanMs(ticks: SimChartTick[]): number {

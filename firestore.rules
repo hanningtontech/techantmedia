@@ -370,6 +370,11 @@ service cloud.firestore {
     match /blockGame/liveChart {
       allow read: if true;
       allow write: if isSignedIn();
+
+      match /pages/{pageId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+      }
     }
 
     match /blockGame/settings {
@@ -403,6 +408,12 @@ service cloud.firestore {
         && request.resource.data.userProfit is number
         && request.resource.data.userStake is number;
       allow update, delete: if false;
+    }
+
+    match /blockGamePlayers/{playerId} {
+      allow read: if isAdmin();
+      allow create, update: if isSignedIn() && request.auth.uid == playerId;
+      allow delete: if false;
     }
 
     match /blockGame/playerRevenue {

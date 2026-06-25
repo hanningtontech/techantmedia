@@ -25,7 +25,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.pumpLiveChartOnce = pumpLiveChartOnce;
 const admin = __importStar(require("firebase-admin"));
-const MAX_LIVE_TICKS = 4000;
+const liveChartStorage_1 = require("./liveChartStorage");
 const GAMES_PER_RUN = 18;
 const DEFAULT_HOUSE_EDGE = 0.03;
 const ROWS = 6;
@@ -98,26 +98,50 @@ async function pumpLiveChartOnce() {
     const houseEdge = Math.min(0.5, Math.max(0.01, Number.isFinite(rawEdge) ? rawEdge : DEFAULT_HOUSE_EDGE));
     const ref = db.doc("blockGame/liveChart");
     let added = 0;
+    const newTicks = [];
     await db.runTransaction(async (tx) => {
         const snap = await tx.get(ref);
         const data = snap.exists ? snap.data() : {};
-        const history = Array.isArray(data.chartHistory) ? [...data.chartHistory] : [];
-        let prev = history[history.length - 1];
+        let tail = Array.isArray(data.chartHistory) ? [...data.chartHistory] : [];
+        let prev = tail[tail.length - 1] ?? (Array.isArray(data.chartHistory) ? undefined : undefined);
+        let latestPageIndex = Number(data.latestPageIndex ?? 0);
+        const pageRef = ref.collection("pages").doc(String(latestPageIndex));
+        const pageSnap = await tx.get(pageRef);
+        let pageTicks = pageSnap.exists && Array.isArray(pageSnap.data()?.ticks)
+            ? [...pageSnap.data().ticks]
+            : [];
         let gameIndex = prev?.gameIndex ?? 0;
         for (let i = 0; i < GAMES_PER_RUN; i++) {
             const { stake, payout } = simulateOneGame(houseEdge);
             gameIndex += 1;
             const t = Math.max(Date.now(), (prev?.t ?? 0) + 1);
             const tick = createTick(prev, stake, payout, gameIndex, t);
-            history.push(tick);
+            newTicks.push(tick);
             prev = tick;
+            tail = (0, liveChartStorage_1.appendTickToBuffer)(tail, tick);
             added += 1;
         }
-        const trimmed = history.length > MAX_LIVE_TICKS ? history.slice(-MAX_LIVE_TICKS) : history;
-        const last = trimmed[trimmed.length - 1];
+        pageTicks = (0, liveChartStorage_1.appendTicksToPage)(pageTicks, newTicks);
+        const { pages, latestPageIndex: nextPageIndex, remainder } = (0, liveChartStorage_1.splitOverflowPages)(latestPageIndex, pageTicks);
+        for (const page of pages) {
+            tx.set(ref.collection("pages").doc(String(page.pageIndex)), page);
+        }
+        const activePageIndex = pages.length > 0 ? nextPageIndex : latestPageIndex;
+        tx.set(ref.collection("pages").doc(String(activePageIndex)), {
+            pageIndex: activePageIndex,
+            ticks: remainder,
+            startGameIndex: remainder[0]?.gameIndex ?? gameIndex,
+            endGameIndex: remainder[remainder.length - 1]?.gameIndex ?? gameIndex,
+        });
+        const last = prev;
         const sources = (data.activeSources ?? {});
+        const totalTicks = Number(data.totalTicks ?? tail.length) + newTicks.length;
+        const chartStartedAt = Number(data.chartStartedAt ?? last.t);
         tx.set(ref, {
-            chartHistory: trimmed,
+            chartHistory: tail,
+            latestPageIndex: activePageIndex,
+            totalTicks,
+            chartStartedAt: Math.min(chartStartedAt, newTicks[0]?.t ?? last.t),
             updatedAt: Date.now(),
             metrics: {
                 totalGames: last.gameIndex,

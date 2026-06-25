@@ -73,6 +73,7 @@ const SimulationChartPage = lazy(() => import("./pages/simulation/SimulationChar
 const PlayerChartPage = lazy(() => import("./pages/game/PlayerChartPage"));
 const PlayerSessionHistoryPage = lazy(() => import("./pages/game/PlayerSessionHistoryPage"));
 const PlayerSessionAnalysisPage = lazy(() => import("./pages/game/PlayerSessionAnalysisPage"));
+const BlockGamePlayersAnalysisPage = lazy(() => import("./pages/admin/BlockGamePlayersAnalysisPage"));
 const WrittenQnsPage = lazy(() => import("./pages/WrittenQnsPage"));
 
 function App() {
@@ -89,6 +90,7 @@ function App() {
           <Switch>
             <Route path="/written-qns/:step" component={WrittenQnsPage} />
             <Route path="/written-qns" component={WrittenQnsPage} />
+            <Route path="/admin/block-game/players" component={BlockGamePlayersAnalysisPage} />
             <Route path="/admin/portfolio" component={XaiPortfolioAdminPage} />
             <Route path="/admin" component={PortfolioAdminPage} />
             <Route path="/photography/contracts/:slug" component={ContractSlugPage} />

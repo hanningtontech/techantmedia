@@ -10,6 +10,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { tryGetFirestoreDb } from "@/lib/firebase";
+import { BLOCK_GAME_PLAYERS_COLLECTION } from "./blockGamePlayersFirestore";
 import type { GameEconomics } from "@/lib/simulation/types";
 import type { SessionOutcome } from "@/lib/simulation/types";
 
@@ -130,8 +131,11 @@ export async function recordPlayerRound(args: {
     gridCols: args.gridCols,
   };
 
+  const playerDocRef = doc(db, BLOCK_GAME_PLAYERS_COLLECTION, args.uid);
+
   await runTransaction(db, async (tx) => {
     const sumSnap = await tx.get(sumRef);
+    const playerSnap = await tx.get(playerDocRef);
     const prev = sumSnap.exists()
       ? (sumSnap.data() as PlayerRevenueSummaryDoc)
       : { totalGames: 0, totalAdminRevenue: 0, totalUserStaked: 0, totalUserPayout: 0, updatedAt: 0 };
@@ -148,6 +152,40 @@ export async function recordPlayerRound(args: {
       },
       { merge: true },
     );
+
+    if (!playerSnap.exists()) {
+      tx.set(playerDocRef, {
+        uid: args.uid,
+        userEmail: args.userEmail,
+        userName: args.userName,
+        registeredAt: playedAtMs,
+        registeredAtIso: round.playedAt,
+        lastSeenAt: playedAtMs,
+        lastPlayedAt: playedAtMs,
+        totalRounds: 1,
+        totalStaked: round.userStake,
+        totalPayout: round.userPayout,
+        totalUserProfit: round.userProfit,
+        totalAdminRevenue: round.adminRevenue,
+      });
+    } else {
+      const p = playerSnap.data();
+      tx.set(
+        playerDocRef,
+        {
+          userEmail: args.userEmail,
+          userName: args.userName,
+          lastSeenAt: playedAtMs,
+          lastPlayedAt: playedAtMs,
+          totalRounds: (p.totalRounds ?? 0) + 1,
+          totalStaked: (p.totalStaked ?? 0) + round.userStake,
+          totalPayout: (p.totalPayout ?? 0) + round.userPayout,
+          totalUserProfit: (p.totalUserProfit ?? 0) + round.userProfit,
+          totalAdminRevenue: (p.totalAdminRevenue ?? 0) + round.adminRevenue,
+        },
+        { merge: true },
+      );
+    }
   });
 }
 

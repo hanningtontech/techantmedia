@@ -2,7 +2,9 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
+  orderBy,
   query,
   runTransaction,
   setDoc,
@@ -14,8 +16,12 @@ import { DEFAULT_HOUSE_EDGE } from "./constants";
 import { defaultBombRanges, mergeBombRanges, type GridBombRanges } from "./bombRangeSettings";
 import { clampWalletBalance } from "./playerStorage";
 import { type SimChartTick } from "@/lib/simulation/timeChartHistory";
-
-const MAX_LIVE_TICKS = 2500;
+import {
+  appendTickToBuffer,
+  appendTicksToPage,
+  mergePagedChartHistory,
+  splitOverflowPages,
+} from "@shared/liveChartStorage";
 
 export interface LiveChartSnapshot {
   chartHistory: SimChartTick[];
@@ -57,6 +63,18 @@ function liveChartRef() {
   const db = tryGetFirestoreDb();
   if (!db) return null;
   return doc(db, "blockGame", "liveChart");
+}
+
+function chartPagesCol() {
+  const ref = liveChartRef();
+  if (!ref) return null;
+  return collection(ref, "pages");
+}
+
+function chartPageRef(pageIndex: number) {
+  const col = chartPagesCol();
+  if (!col) return null;
+  return doc(col, String(pageIndex));
 }
 
 function settingsRef() {
@@ -154,6 +172,29 @@ export async function loadLiveChartSnapshot(): Promise<LiveChartSnapshot | null>
   return parseLiveChartDoc(snap.data() as Record<string, unknown>);
 }
 
+/** Load entire chart timeline (paged archive + live tail) for panning full history. */
+export async function loadFullLiveChartHistory(): Promise<SimChartTick[]> {
+  const ref = liveChartRef();
+  const col = chartPagesCol();
+  if (!ref || !col) return [];
+
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return [];
+  const tail = Array.isArray(snap.data().chartHistory)
+    ? ([...snap.data().chartHistory] as SimChartTick[])
+    : [];
+
+  const pagesSnap = await getDocs(query(col, orderBy("pageIndex", "asc")));
+  if (pagesSnap.empty) return tail;
+
+  const fromPages: SimChartTick[] = [];
+  for (const page of pagesSnap.docs) {
+    const ticks = page.data().ticks;
+    if (Array.isArray(ticks)) fromPages.push(...(ticks as SimChartTick[]));
+  }
+  return mergePagedChartHistory(fromPages, tail) as SimChartTick[];
+}
+
 /** Public live chart — all players + simulations aggregate here. */
 export function subscribeLiveChart(listener: (snapshot: LiveChartSnapshot | null) => void): Unsubscribe {
   const ref = liveChartRef();
@@ -178,24 +219,61 @@ export async function appendLiveChartTick(
   tick: SimChartTick,
   sourceKind: "player" | "simulation",
 ): Promise<void> {
+  const db = tryGetFirestoreDb();
   const ref = liveChartRef();
-  if (!ref) return;
+  if (!db || !ref) return;
 
-  await runTransaction(tryGetFirestoreDb()!, async (tx) => {
+  await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     const data = snap.exists() ? (snap.data() as Record<string, unknown>) : {};
-    const history = Array.isArray(data.chartHistory) ? ([...data.chartHistory] as SimChartTick[]) : [];
-    const last = history[history.length - 1];
+    let tail = Array.isArray(data.chartHistory) ? ([...data.chartHistory] as SimChartTick[]) : [];
+    const last = tail[tail.length - 1];
     if (last?.gameIndex === tick.gameIndex) return;
 
-    history.push(tick);
-    const trimmed = history.length > MAX_LIVE_TICKS ? history.slice(-MAX_LIVE_TICKS) : history;
+    let latestPageIndex = Number(data.latestPageIndex ?? 0);
+    const pageRef = chartPageRef(latestPageIndex);
+    if (!pageRef) return;
+
+    const pageSnap = await tx.get(pageRef);
+    let pageTicks =
+      pageSnap.exists() && Array.isArray(pageSnap.data()?.ticks)
+        ? ([...pageSnap.data()!.ticks] as SimChartTick[])
+        : [];
+
+    pageTicks = appendTicksToPage(pageTicks as SimChartTick[], [tick]) as SimChartTick[];
+    const { pages, latestPageIndex: nextPageIndex, remainder } = splitOverflowPages(
+      latestPageIndex,
+      pageTicks as SimChartTick[],
+    );
+
+    for (const page of pages) {
+      const pRef = chartPageRef(page.pageIndex);
+      if (pRef) tx.set(pRef, page);
+    }
+
+    const activePageIndex = pages.length > 0 ? nextPageIndex : latestPageIndex;
+    const activeRef = chartPageRef(activePageIndex);
+    if (activeRef) {
+      tx.set(activeRef, {
+        pageIndex: activePageIndex,
+        ticks: remainder,
+        startGameIndex: remainder[0]?.gameIndex ?? tick.gameIndex,
+        endGameIndex: remainder[remainder.length - 1]?.gameIndex ?? tick.gameIndex,
+      });
+    }
+
+    tail = appendTickToBuffer(tail as SimChartTick[], tick) as SimChartTick[];
     const sources = (data.activeSources ?? {}) as Record<string, number>;
+    const totalTicks = Number(data.totalTicks ?? tail.length) + 1;
+    const chartStartedAt = Number(data.chartStartedAt ?? tick.t);
 
     tx.set(
       ref,
       {
-        chartHistory: trimmed,
+        chartHistory: tail,
+        latestPageIndex: activePageIndex,
+        totalTicks,
+        chartStartedAt: Math.min(chartStartedAt, tick.t),
         updatedAt: Date.now(),
         metrics: {
           totalGames: tick.gameIndex,
