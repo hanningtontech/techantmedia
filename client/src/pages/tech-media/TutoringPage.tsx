@@ -1,7 +1,9 @@
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { BookOpen, Calendar, CheckCircle2, ExternalLink } from "lucide-react";
+import { SeoFaqSection } from "@/components/seo/SeoFaqSection";
 import { TechMediaLayout } from "@/components/tech-media/TechMediaLayout";
+import { NCLEX_FAQ } from "@/lib/seo/siteSeo";
 import { getNclexAppUrl } from "@/const/nclexLiveUrl";
 import { TUTORING_SCHEDULE, TUTORING_TOPICS } from "@/lib/tech-media/content";
 
@@ -11,17 +13,18 @@ export default function TutoringPage() {
   return (
     <TechMediaLayout>
       <section className="border-b border-white/10 bg-gradient-to-b from-violet-500/15 to-transparent">
-        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-          <p className="text-sm font-semibold uppercase tracking-wider text-violet-400">NCLEX preparation</p>
-          <h1 className="mt-2 text-4xl font-bold text-white md:text-5xl">Online Tutoring</h1>
-          <p className="mt-4 max-w-2xl text-lg text-zinc-400">
-            Structured, evidence-based NCLEX prep with practice banks, rationales, and tutor-led review—built for RN and PN
-            candidates.
+        <div className="mx-auto max-w-7xl tm-page-x tm-section-y">
+          <p className="tm-eyebrow text-violet-400">NCLEX preparation</p>
+          <h1 className="tm-heading-hero mt-2 font-bold text-white">Online Tutoring</h1>
+          <p className="tm-body-lg mt-3 max-w-2xl text-zinc-400 sm:mt-4">
+            <strong className="font-semibold text-zinc-200">TechantMedia NCLEX tutoring</strong> is structured nursing exam
+            preparation with practice banks, rationales, and tutor-led review—built for RN and PN candidates targeting US
+            licensure.
           </p>
-          <div className="mt-8 flex flex-wrap gap-4">
+          <div className="mt-6 flex flex-wrap gap-3 sm:mt-8 sm:gap-4">
             <Link
               href="/contact?service=Tutoring"
-              className="inline-flex items-center gap-2 rounded-full bg-violet-500 px-8 py-3.5 text-sm font-semibold text-white transition-transform hover:scale-[1.03] hover:bg-violet-400"
+              className="inline-flex min-h-[var(--tm-touch-min)] items-center gap-2 rounded-full bg-violet-500 px-6 py-3 text-sm font-semibold text-white transition-transform hover:scale-[1.03] hover:bg-violet-400 sm:px-8 sm:py-3.5"
             >
               <Calendar size={18} />
               Book a session
@@ -33,17 +36,10 @@ export default function TutoringPage() {
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-full border border-white/15 px-8 py-3.5 text-sm font-semibold text-white hover:bg-white/5"
               >
-                Open practice app
+                Student portal
                 <ExternalLink size={16} />
               </a>
-            ) : (
-              <Link
-                href="/student/nclex"
-                className="inline-flex items-center gap-2 rounded-full border border-white/15 px-8 py-3.5 text-sm font-semibold text-white hover:bg-white/5"
-              >
-                Student portal
-              </Link>
-            )}
+            ) : null}
           </div>
         </div>
       </section>
@@ -126,6 +122,8 @@ export default function TutoringPage() {
           </motion.div>
         </div>
       </section>
+
+      <SeoFaqSection items={NCLEX_FAQ} />
     </TechMediaLayout>
   );
 }

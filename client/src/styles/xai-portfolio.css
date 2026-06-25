@@ -1,0 +1,72 @@
+/* xAI Video Tutor portfolio — engineering aesthetic */
+.xai-portfolio-root {
+  scroll-behavior: smooth;
+}
+
+.xai-portfolio-root .font-mono-tech,
+.xai-portfolio-root .xai-tech-label {
+  font-family: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.xai-portfolio-root .xai-markdown {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: rgb(212 212 216);
+}
+
+.xai-portfolio-root .xai-markdown p {
+  margin: 0.5em 0;
+}
+
+.xai-portfolio-root .xai-markdown ul,
+.xai-portfolio-root .xai-markdown ol {
+  margin: 0.5em 0;
+  padding-left: 1.25rem;
+}
+
+.xai-portfolio-root .xai-markdown code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  border-radius: 0.25rem;
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(103 232 249);
+}
+
+.xai-portfolio-root .xai-markdown pre {
+  margin: 0.75em 0;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  background: rgb(0 0 0 / 0.45);
+}
+
+.xai-portfolio-root .xai-markdown pre code {
+  padding: 0;
+  background: transparent;
+}
+
+@keyframes xai-play-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.35);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 28px 6px rgba(34, 211, 238, 0.22);
+  }
+}
+
+.xai-portfolio-root .xai-video-play-btn {
+  animation: xai-play-breathe 2.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xai-portfolio-root .xai-video-play-btn {
+    animation: none;
+  }
+}

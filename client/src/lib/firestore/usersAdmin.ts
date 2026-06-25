@@ -72,6 +72,8 @@ export async function listUsersForAdmin(): Promise<UserListRow[]> {
       uid: d.id,
       email: typeof x.email === "string" ? x.email : "",
       name: typeof x.name === "string" ? x.name : "",
+      username: typeof x.username === "string" ? x.username : "",
+      phoneNumber: typeof x.phoneNumber === "string" ? x.phoneNumber : "",
       role,
       approvalStatus: as === "pending" || as === "rejected" ? as : undefined,
       intakeQuestionnaire: parseIntake(x.intakeQuestionnaire),
@@ -83,6 +85,11 @@ export async function listUsersForAdmin(): Promise<UserListRow[]> {
   });
   rows.sort((a, b) => a.email.localeCompare(b.email));
   return rows;
+}
+
+export async function listClientUsersForAdmin(): Promise<UserListRow[]> {
+  const rows = await listUsersForAdmin();
+  return rows.filter((r) => r.role === "client");
 }
 
 export async function getUserForAdmin(userId: string): Promise<UserListRow | null> {
@@ -101,6 +108,8 @@ export async function getUserForAdmin(userId: string): Promise<UserListRow | nul
     uid: snap.id,
     email: typeof x.email === "string" ? x.email : "",
     name: typeof x.name === "string" ? x.name : "",
+    username: typeof x.username === "string" ? x.username : "",
+    phoneNumber: typeof x.phoneNumber === "string" ? x.phoneNumber : "",
     role,
     approvalStatus: as === "pending" || as === "rejected" ? as : undefined,
     intakeQuestionnaire: parseIntake(x.intakeQuestionnaire),
@@ -158,6 +167,8 @@ export async function listUsersForAdminPage(opts: {
       uid: d.id,
       email: typeof x.email === "string" ? x.email : "",
       name: typeof x.name === "string" ? x.name : "",
+      username: typeof x.username === "string" ? x.username : "",
+      phoneNumber: typeof x.phoneNumber === "string" ? x.phoneNumber : "",
       role,
       approvalStatus: as === "pending" || as === "rejected" ? as : undefined,
       intakeQuestionnaire: parseIntake(x.intakeQuestionnaire),

@@ -20,6 +20,15 @@ import {
 import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, type DocumentData } from "firebase/firestore";
 import { formatAuthOrFirestoreError } from "@/lib/authErrorMessage";
 import { isFirebaseConfigured, tryGetFirebaseAuth, tryGetFirestoreDb } from "@/lib/firebase";
+import {
+  clearClientSignupPending,
+  readClientSignupPending,
+  setClientSignupPending,
+  type ClientSignupPending,
+} from "@/lib/clientGallery/clientProfile";
+import type { AdminFeatureScope } from "@/lib/admin/adminPermissions";
+import { parseAdminScopes } from "@/lib/admin/adminPermissions";
+import { isSuperAdminEmail } from "@/lib/admin/constants";
 import type { UserRole } from "@/lib/firestore/nclexTypes";
 import type { AccountStatus, ApprovalStatus, IntakeQuestionnaire, NursingTrack } from "@/lib/userTypes";
 import { toast } from "sonner";
@@ -31,11 +40,17 @@ export interface AuthUserProfile {
   email: string | null;
   name: string | null;
   role: UserRole;
+  username?: string | null;
+  phoneNumber?: string | null;
   /** New accounts start `pending` until an admin approves. Missing = legacy approved. */
   approvalStatus?: ApprovalStatus;
   intakeQuestionnaire?: IntakeQuestionnaire | null;
   nursingTrack?: NursingTrack | null;
   accountStatus?: AccountStatus;
+  /** Owner account — full admin access. */
+  isSuperAdmin?: boolean;
+  /** Feature areas this admin may access (owner ignores). */
+  adminScopes?: AdminFeatureScope[];
 }
 
 function parseIntakeFromDoc(raw: unknown): IntakeQuestionnaire | null {
@@ -81,16 +96,40 @@ function mapDocToProfile(u: User, d: DocumentData): AuthUserProfile {
   const rawStatus = d.accountStatus;
   const accountStatus: AccountStatus =
     rawStatus === "disabled" || rawStatus === "disqualified" ? rawStatus : "active";
+  const email = u.email ?? (typeof d.email === "string" ? d.email : null);
+  const isSuperAdmin =
+    d.isSuperAdmin === true || isSuperAdminEmail(email);
   return {
     uid: u.uid,
-    email: u.email ?? (typeof d.email === "string" ? d.email : null),
+    email,
     name: u.displayName ?? (typeof d.name === "string" ? d.name : null),
     role,
+    isSuperAdmin,
+    adminScopes: parseAdminScopes(d.adminScopes),
+    username: typeof d.username === "string" ? d.username : null,
+    phoneNumber: typeof d.phoneNumber === "string" ? d.phoneNumber : null,
     approvalStatus,
     intakeQuestionnaire: parseIntakeFromDoc(d.intakeQuestionnaire),
     nursingTrack,
     accountStatus,
   };
+}
+
+async function writeClientUserDoc(uid: string, data: ClientSignupPending & { email: string; name: string }) {
+  const db = tryGetFirestoreDb();
+  if (!db) return;
+  await setDoc(
+    doc(db, USERS, uid),
+    {
+      email: data.email,
+      name: data.name,
+      username: data.username.trim(),
+      phoneNumber: data.phoneNumber.trim(),
+      role: "client" as UserRole,
+      createdAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
 }
 
 /** Students who must not use NCLEX routes until approved (pending or rejected). */
@@ -120,6 +159,14 @@ type FirebaseAuthContextValue = {
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
+  signUpClientWithEmail: (
+    email: string,
+    password: string,
+    displayName: string,
+    phoneNumber: string,
+    username: string,
+  ) => Promise<void>;
+  signInClientWithGoogle: (pending: ClientSignupPending) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -173,17 +220,27 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
         try {
           const initial = await getDoc(ref);
           if (!initial.exists()) {
-            await setDoc(
-              ref,
-              {
+            const pending = readClientSignupPending();
+            clearClientSignupPending();
+            if (pending) {
+              await writeClientUserDoc(u.uid, {
+                ...pending,
                 email: u.email ?? "",
-                name: u.displayName ?? "",
-                role: "student" as UserRole,
-                approvalStatus: "pending",
-                createdAt: serverTimestamp(),
-              },
-              { merge: true },
-            );
+                name: pending.displayName?.trim() || u.displayName || pending.username,
+              });
+            } else {
+              await setDoc(
+                ref,
+                {
+                  email: u.email ?? "",
+                  name: u.displayName ?? "",
+                  role: "student" as UserRole,
+                  approvalStatus: "pending",
+                  createdAt: serverTimestamp(),
+                },
+                { merge: true },
+              );
+            }
           }
 
           profileUnsubRef.current = onSnapshot(
@@ -263,6 +320,39 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const signUpClientWithEmail = useCallback(
+    async (email: string, password: string, displayName: string, phoneNumber: string, username: string) => {
+      const auth = tryGetFirebaseAuth();
+      if (!auth) throw new Error("Firebase Auth not configured");
+      setClientSignupPending({ username, phoneNumber, displayName });
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      try {
+        await writeClientUserDoc(cred.user.uid, {
+          email,
+          name: displayName,
+          username,
+          phoneNumber,
+          displayName,
+        });
+        clearClientSignupPending();
+      } catch (e) {
+        clearClientSignupPending();
+        throw new Error(formatAuthOrFirestoreError(e));
+      }
+    },
+    [],
+  );
+
+  const signInClientWithGoogle = useCallback(async (pending: ClientSignupPending) => {
+    setClientSignupPending(pending);
+    try {
+      await signInWithGoogle();
+    } catch (e) {
+      clearClientSignupPending();
+      throw e;
+    }
+  }, [signInWithGoogle]);
+
   const signOut = useCallback(async () => {
     const auth = tryGetFirebaseAuth();
     if (auth) await firebaseSignOut(auth);
@@ -277,9 +367,22 @@ export function FirebaseAuthProvider({ children }: { children: ReactNode }) {
       signInWithGoogle,
       signInWithEmail,
       signUpWithEmail,
+      signUpClientWithEmail,
+      signInClientWithGoogle,
       signOut,
     }),
-    [firebaseReady, loading, user, profile, signInWithGoogle, signInWithEmail, signUpWithEmail, signOut],
+    [
+      firebaseReady,
+      loading,
+      user,
+      profile,
+      signInWithGoogle,
+      signInWithEmail,
+      signUpWithEmail,
+      signUpClientWithEmail,
+      signInClientWithGoogle,
+      signOut,
+    ],
   );
 
   return <FirebaseAuthContext.Provider value={value}>{children}</FirebaseAuthContext.Provider>;
@@ -299,6 +402,10 @@ export function isTutorOrAdmin(profile: AuthUserProfile | null): boolean {
 
 export function isAdmin(profile: AuthUserProfile | null): boolean {
   return profile?.role === "admin";
+}
+
+export function isClient(profile: AuthUserProfile | null): boolean {
+  return profile?.role === "client";
 }
 
 export function isStudentOrAbove(profile: AuthUserProfile | null): boolean {

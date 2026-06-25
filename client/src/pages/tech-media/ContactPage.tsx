@@ -44,11 +44,11 @@ export default function ContactPage() {
 
   return (
     <TechMediaLayout>
-      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="grid gap-12 lg:grid-cols-2">
+      <section className="mx-auto max-w-7xl tm-page-x tm-section-y">
+        <div className="grid gap-8 md:grid-cols-2 md:gap-10 lg:gap-12">
           <div>
-            <h1 className="text-4xl font-bold text-white">Contact</h1>
-            <p className="mt-4 text-lg text-zinc-400">
+            <h1 className="tm-heading-page font-bold text-white">Contact</h1>
+            <p className="tm-body-lg mt-3 text-zinc-400 sm:mt-4">
               Tell us about your shoot, build, or tutoring goals—we respond within one business day.
             </p>
             <ul className="mt-10 space-y-4 text-zinc-400">

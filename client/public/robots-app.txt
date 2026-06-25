@@ -1,0 +1,3 @@
+# Private app host — block all crawlers (app.techantmedia.com)
+User-agent: *
+Disallow: /

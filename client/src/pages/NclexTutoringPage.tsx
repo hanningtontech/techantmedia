@@ -1,7 +1,10 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SeoFaqSection } from "@/components/seo/SeoFaqSection";
 import { getNclexAppUrl } from "@/const/nclexLiveUrl";
+import { appUrl } from "@/lib/seo/appOrigin";
+import { NCLEX_FAQ } from "@/lib/seo/siteSeo";
 import { ArrowLeft, BarChart3, BookOpen, CheckCircle, ExternalLink, Mail, Users } from "lucide-react";
 
 const nclexAppUrl = getNclexAppUrl();
@@ -61,7 +64,7 @@ export default function NclexTutoringPage() {
               </a>
             </Button>
             <Button asChild size="lg" variant="secondary" className="w-full border-orange-200 bg-white sm:w-auto">
-              <Link href="/tutor/nclex/quizzes">Tutor admin — quizzes and bank</Link>
+              <a href={appUrl("/tutor/nclex/quizzes")}>Tutor admin — quizzes and bank</a>
             </Button>
           </div>
         </div>
@@ -160,6 +163,8 @@ export default function NclexTutoringPage() {
           </CardContent>
         </Card>
       </main>
+
+      <SeoFaqSection items={NCLEX_FAQ} variant="light" />
 
       <footer className="border-t border-gray-200 py-8 text-center text-sm text-gray-500">
         NCLEX practice app source: <code className="text-xs text-gray-700">nclex_practice_app</code> in this workspace.

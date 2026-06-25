@@ -24,6 +24,8 @@ export interface UserListRow {
   uid: string;
   email: string;
   name: string;
+  username?: string;
+  phoneNumber?: string;
   role: UserRole;
   approvalStatus?: ApprovalStatus;
   intakeQuestionnaire?: IntakeQuestionnaire | null;

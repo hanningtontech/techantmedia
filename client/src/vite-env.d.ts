@@ -9,6 +9,10 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_APP_ID?: string;
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string;
   readonly VITE_NCLEX_APP_URL?: string;
+  readonly VITE_SITE_URL?: string;
+  readonly VITE_LIVESTREAM_HLS_URL?: string;
+  readonly VITE_LIVESTREAM_RTMP_URL?: string;
+  readonly VITE_LIVESTREAM_ALLOWED_HOSTS?: string;
 }
 
 interface ImportMeta {

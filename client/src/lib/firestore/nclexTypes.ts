@@ -1,6 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 
-export type UserRole = "tutor" | "student" | "admin";
+export type UserRole = "tutor" | "student" | "admin" | "client";
 
 /** Which NCLEX track this content targets. `both` = RN and PN. Omit/null = legacy (visible to all tracks). */
 export type NclexExamType = "rn" | "pn" | "both";

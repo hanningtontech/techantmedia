@@ -5,12 +5,24 @@ import { NclexRouteFallback } from "@/components/nclex/NclexRouteFallback";
 import { FirebaseAuthProvider } from "./contexts/FirebaseAuthContext";
 import { SiteContentProvider } from "./contexts/SiteContentContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { GlobalSeo } from "@/components/seo/GlobalSeo";
+import { ScrollToTopOnNavigate } from "@/components/tech-media/ScrollToTopOnNavigate";
 import Portfolio from "./Portfolio";
+import XaiPortfolioPage from "./pages/xai-portfolio/XaiPortfolioPage";
+import XaiPortfolioAdminPage from "./pages/admin/XaiPortfolioAdminPage";
 import HomePage from "./pages/tech-media/HomePage";
 import PhotographyPage from "./pages/tech-media/PhotographyPage";
+import ContractsIndexPage from "./pages/tech-media/ContractsIndexPage";
+import ContractSlugPage from "./pages/tech-media/ContractSlugPage";
+import ClientSignUpPage from "./pages/tech-media/ClientSignUpPage";
+import MyGalleryPage from "./pages/tech-media/MyGalleryPage";
+import GalleryCategoryPage from "./pages/tech-media/GalleryCategoryPage";
+import InsposPage from "./pages/tech-media/InsposPage";
+import { InspoProvider } from "./contexts/InspoContext";
 import DevelopmentPage from "./pages/tech-media/DevelopmentPage";
 import TutoringPage from "./pages/tech-media/TutoringPage";
 import ContactPage from "./pages/tech-media/ContactPage";
+import LivestreamPage from "./pages/livestream/LivestreamPage";
 import NclexTutoringPage from "./pages/NclexTutoringPage";
 import StudentPendingApprovalPage from "./pages/student/nclex/StudentPendingApprovalPage";
 import StudentDisabledPage from "./pages/student/nclex/StudentDisabledPage";
@@ -31,7 +43,6 @@ import AdminNotifications from "./pages/tutor/nclex/AdminNotifications";
 import AdminPresentations from "./pages/tutor/nclex/AdminPresentations";
 import AdminStudyGuides from "./pages/tutor/nclex/AdminStudyGuides";
 import AdminNclexNotes from "./pages/tutor/nclex/AdminNclexNotes";
-import WrittenQnsPage from "./pages/WrittenQnsPage";
 import PortfolioAdminPage from "./pages/admin/PortfolioAdminPage";
 import { Route, Switch } from "wouter";
 import { StudentTutoringFloatingDock } from "@/components/tutoring/StudentTutoringFloatingDock";
@@ -55,25 +66,54 @@ const AdminTutoringSessions = lazy(() => import("./pages/tutor/nclex/AdminTutori
 const AdminTutoringSessionDetail = lazy(() => import("./pages/tutor/nclex/AdminTutoringSessionDetail"));
 const AdminTopicProgress = lazy(() => import("./pages/tutor/nclex/AdminTopicProgress"));
 const StudentTutoringSessionDetail = lazy(() => import("./pages/student/nclex/StudentTutoringSessionDetail"));
+const ExtractionPage = lazy(() => import("./pages/ntsa/ExtractionPage"));
+const BlockGameSimulationPage = lazy(() => import("./pages/simulation/BlockGameSimulationPage"));
+const BlockGamePage = lazy(() => import("./pages/game/BlockGamePage"));
+const SimulationChartPage = lazy(() => import("./pages/simulation/SimulationChartPage"));
+const PlayerChartPage = lazy(() => import("./pages/game/PlayerChartPage"));
+const PlayerSessionHistoryPage = lazy(() => import("./pages/game/PlayerSessionHistoryPage"));
+const PlayerSessionAnalysisPage = lazy(() => import("./pages/game/PlayerSessionAnalysisPage"));
+const WrittenQnsPage = lazy(() => import("./pages/WrittenQnsPage"));
 
 function App() {
   return (
     <ThemeProvider defaultTheme="dark">
       <FirebaseAuthProvider>
         <SiteContentProvider>
+        <InspoProvider>
+        <ScrollToTopOnNavigate />
+        <GlobalSeo />
         <TooltipProvider>
           <Toaster />
           <Suspense fallback={<NclexRouteFallback />}>
           <Switch>
             <Route path="/written-qns/:step" component={WrittenQnsPage} />
             <Route path="/written-qns" component={WrittenQnsPage} />
+            <Route path="/admin/portfolio" component={XaiPortfolioAdminPage} />
             <Route path="/admin" component={PortfolioAdminPage} />
+            <Route path="/photography/contracts/:slug" component={ContractSlugPage} />
+            <Route path="/photography/contracts" component={ContractsIndexPage} />
+            <Route path="/photography/gallery/:slug" component={GalleryCategoryPage} />
+            <Route path="/photography/my-gallery" component={MyGalleryPage} />
+            <Route path="/photography/account" component={ClientSignUpPage} />
             <Route path="/photography" component={PhotographyPage} />
+            <Route path="/inspos/:boardId" component={InsposPage} />
+            <Route path="/inspos" component={InsposPage} />
             <Route path="/development" component={DevelopmentPage} />
             <Route path="/tutoring" component={TutoringPage} />
             <Route path="/contact" component={ContactPage} />
+            <Route path="/livestream" component={LivestreamPage} />
+            <Route path="/live" component={LivestreamPage} />
+            <Route path="/extraction" component={ExtractionPage} />
+            <Route path="/game/history/analysis" component={PlayerSessionAnalysisPage} />
+            <Route path="/game/history" component={PlayerSessionHistoryPage} />
+            <Route path="/game/chart" component={PlayerChartPage} />
+            <Route path="/game" component={BlockGamePage} />
+            <Route path="/simulation/chart" component={SimulationChartPage} />
+            <Route path="/simulation" component={BlockGameSimulationPage} />
             <Route path="/nclex-platform" component={NclexTutoringPage} />
-            <Route path="/portfolio" component={Portfolio} />
+            <Route path="/portfolio" component={XaiPortfolioPage} />
+            <Route path="/developer-portfolio" component={Portfolio} />
             <Route path="/tutor/nclex/review/:studentId/:sessionId" component={ReviewDashboard} />
             <Route path="/tutor/nclex/questions" component={QuestionManagement} />
             <Route path="/tutor/nclex/quizzes" component={QuizManagement} />
@@ -118,6 +158,7 @@ function App() {
           <StudentTutoringFloatingDock />
           </Suspense>
         </TooltipProvider>
+        </InspoProvider>
         </SiteContentProvider>
       </FirebaseAuthProvider>
     </ThemeProvider>

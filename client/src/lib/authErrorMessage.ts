@@ -14,7 +14,7 @@ export function formatAuthOrFirestoreError(err: unknown): string {
     "auth/email-already-in-use": "That email is already registered. Try Sign in.",
     "auth/weak-password": "Password is too weak. Use at least 6 characters.",
     "auth/operation-not-allowed": "This sign-in method is disabled in Firebase. Enable Email/Password or Google under Authentication → Sign-in method.",
-    "auth/unauthorized-domain": "This site’s domain is not allowed. In Firebase Console → Authentication → Settings → Authorized domains, add localhost (and your live domain, e.g. hanningtonkutria-portfolio.web.app).",
+    "auth/unauthorized-domain": "This site’s domain is not allowed. In Firebase Console → Authentication → Settings → Authorized domains, add localhost, techantmedia.com, and www.techantmedia.com if you use it.",
     "auth/popup-blocked": "The browser blocked the sign-in popup. Allow popups for this site or try again.",
     "auth/popup-closed-by-user": "Sign-in was cancelled.",
     "auth/network-request-failed": "Network error. Check your connection and try again.",

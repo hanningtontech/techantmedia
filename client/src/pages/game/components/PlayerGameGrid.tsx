@@ -1,0 +1,194 @@
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useBlockGamePlayer } from "@/contexts/BlockGamePlayerContext";
+import { usePlayerGridLayout } from "@/hooks/usePlayerGridLayout";
+import { bombShakeDurationMs, isLightBombEffects } from "@/lib/game/bombRevealTiming";
+import { cn } from "@/lib/utils";
+import "@/pages/simulation/simulationEffects.css";
+import "../playerGameCells.css";
+
+const PARTICLE_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
+
+function BombExplosionOverlay({ size, lite }: { size: number; lite?: boolean }) {
+  const radius = Math.max(size * 0.55, 14);
+  return (
+    <div className={cn("pointer-events-none absolute inset-0 z-10", lite && "sim-explosion-lite")} aria-hidden>
+      <div className="sim-explosion-flash" />
+      <div className="sim-explosion-core" />
+      {!lite && (
+        <>
+          <div className="sim-explosion-ring" />
+          <div className="sim-explosion-ring sim-explosion-ring--delayed" />
+          {PARTICLE_ANGLES.map((deg) => {
+            const rad = (deg * Math.PI) / 180;
+            return (
+              <div
+                key={deg}
+                className="sim-explosion-particle"
+                style={
+                  { "--dx": `${Math.cos(rad) * radius}px`, "--dy": `${Math.sin(rad) * radius}px` } as React.CSSProperties
+                }
+              />
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
+export function PlayerGameGrid({
+  layoutMeasureRef,
+  controlsReservePx = 0,
+  maxBoardHeight = 0,
+  widthInsetPx = 0,
+  alignStart = false,
+  edgeToEdge = false,
+  hideHint = false,
+  className,
+}: {
+  layoutMeasureRef?: RefObject<HTMLElement | null>;
+  controlsReservePx?: number;
+  maxBoardHeight?: number;
+  widthInsetPx?: number;
+  alignStart?: boolean;
+  edgeToEdge?: boolean;
+  hideHint?: boolean;
+  className?: string;
+}) {
+  const {
+    config,
+    cells,
+    status,
+    clickCell,
+    selectedIndex,
+    explosionCell,
+    boardEpoch,
+    roundSettled,
+    gridColorId,
+    gridStyleId,
+  } = useBlockGamePlayer();
+
+  const [shaking, setShaking] = useState(false);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const { internalRef, cellPx, gap, boardW, boardH } = usePlayerGridLayout(
+    config.cols,
+    config.rows,
+    controlsReservePx,
+    layoutMeasureRef,
+    maxBoardHeight,
+    widthInsetPx,
+    edgeToEdge,
+  );
+  const compactHint = maxBoardHeight > 0 && maxBoardHeight < 320;
+  const roundEnded = status === "lost" || status === "won" || status === "cashed_out";
+  const lightExplosion = useMemo(() => isLightBombEffects(), []);
+  const bombAnimating = explosionCell != null && status === "playing";
+
+  useEffect(() => {
+    if (explosionCell == null) return;
+    setShaking(true);
+    const t = window.setTimeout(() => setShaking(false), bombShakeDurationMs());
+    return () => window.clearTimeout(t);
+  }, [explosionCell, boardEpoch]);
+
+  return (
+    <div
+      ref={layoutMeasureRef ? undefined : internalRef}
+      className={cn(
+        "flex min-w-0 flex-col overflow-x-hidden",
+        edgeToEdge ? "w-full items-stretch" : alignStart ? "shrink-0 items-start" : "w-full min-h-0 flex-1 shrink items-center",
+        `game-theme--${gridColorId}`,
+        `game-style--${gridStyleId}`,
+        className,
+      )}
+    >
+      {!hideHint && (
+      <p
+        className={cn(
+          "mb-1.5 w-full shrink-0 px-0.5 text-zinc-400 sm:mb-2",
+          edgeToEdge ? "px-3 text-left" : alignStart ? "text-left" : "text-center",
+          compactHint ? "text-[10px] leading-snug sm:text-xs" : "text-xs sm:text-sm",
+        )}
+      >
+        {status === "idle" && !roundSettled ? (
+          <>Pick size, colour & style — set stake — start a round.</>
+        ) : status === "playing" ? (
+          <>Tap to reveal · withdraw anytime</>
+        ) : status === "lost" ? (
+          <>Bomb hit — board revealed. Play again when ready.</>
+        ) : roundSettled ? (
+          <>Round complete — play again or open your session chart.</>
+        ) : (
+          <>Ready for the next round.</>
+        )}
+      </p>
+      )}
+
+      <div
+        className={cn(
+          "game-board-tray max-w-full",
+          edgeToEdge ? "game-board-tray--edge w-full rounded-none border-x-0" : "w-fit",
+          alignStart && !edgeToEdge ? "mr-auto" : "mx-auto",
+        )}
+      >
+        <div
+          ref={gridRef}
+          key={boardEpoch}
+          className={cn(
+            "inline-grid max-w-full shrink-0",
+            edgeToEdge && "mx-auto",
+            shaking && (lightExplosion ? "sim-grid-shake--lite" : "sim-grid-shake"),
+          )}
+          style={{
+            gridTemplateColumns: `repeat(${config.cols}, ${cellPx}px)`,
+            gap: `${gap}px`,
+            width: boardW,
+            maxWidth: "100%",
+            height: boardH,
+          }}
+          role="grid"
+          aria-label={`Game board ${config.rows} by ${config.cols}`}
+        >
+          {cells.map((cell, index) => {
+            const isHidden = cell === "hidden";
+            const isExploding = explosionCell === index && cell === "bomb";
+            const isSelected = selectedIndex === index && isHidden && !isExploding;
+
+            return (
+              <button
+                key={index}
+                type="button"
+                disabled={!isHidden || status !== "playing" || roundEnded || bombAnimating}
+                onClick={(e) => {
+                  e.preventDefault();
+                  clickCell(index);
+                }}
+                style={{
+                  width: cellPx,
+                  height: cellPx,
+                  fontSize: Math.max(8, Math.min(Math.round(cellPx * 0.42), cellPx - 4)),
+                }}
+                className={cn(
+                  "game-cell",
+                  isHidden && "game-cell--hidden",
+                  cell === "safe" && "game-cell--safe",
+                  cell === "bomb" && "game-cell--bomb",
+                  isSelected && "game-cell--selected",
+                  isExploding && (lightExplosion ? "sim-bomb-cell--lite" : "sim-bomb-cell z-20"),
+                  !isHidden && "cursor-default",
+                )}
+              >
+                <span className="game-cell__shine" aria-hidden />
+                <span className="game-cell__rim" aria-hidden />
+                <span className="game-cell__icon">
+                  {!isHidden ? (cell === "safe" ? "✓" : "💣") : null}
+                </span>
+                {isExploding && <BombExplosionOverlay size={cellPx} lite={lightExplosion} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}

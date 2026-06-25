@@ -6,6 +6,8 @@ import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
 
+const APP_ROBOTS = path.resolve(import.meta.dirname, "client", "public", "robots-app.txt");
+
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
 // Writes browser logs directly to files, trimmed when exceeding size limit
@@ -155,16 +157,47 @@ function portfolioApiDevPlugin(): Plugin {
   return {
     name: "portfolio-api-dev",
     apply: "serve",
+    enforce: "pre",
     configureServer(viteServer) {
-      return async () => {
-        const { createApiApp } = await import("./server/index.ts");
-        const api = createApiApp();
-        viteServer.middlewares.use((req, res, next) => {
-          const url = req.url ?? "";
-          if (!url.startsWith("/api")) return next();
+      // Register before Vite's static/SPA middleware (post-hooks run too late → 404 on /api).
+      let api: import("express").Application | undefined;
+      viteServer.middlewares.use((req, res, next) => {
+        const url = req.url ?? "";
+        if (!url.startsWith("/api")) return next();
+        void (async () => {
+          if (!api) {
+            const { createApiApp } = await import("./server/index.ts");
+            api = createApiApp();
+          }
           api(req, res, next);
-        });
-      };
+        })().catch(next);
+      });
+    },
+  };
+}
+
+/** After app build, block crawlers on app.techantmedia.com */
+function vitePluginAppRobots(): Plugin {
+  return {
+    name: "app-robots-txt",
+    apply: "build",
+    closeBundle() {
+      const out = path.resolve(import.meta.dirname, "dist", "app", "robots.txt");
+      if (fs.existsSync(out)) fs.copyFileSync(APP_ROBOTS, out);
+    },
+  };
+}
+
+/** Strip eager preloads for heavy lazy-loaded chunks (smaller crawler footprint). */
+function vitePluginStripHeavyPreloads(): Plugin {
+  return {
+    name: "strip-heavy-preloads",
+    apply: "build",
+    transformIndexHtml(html) {
+      return html.replace(
+        /<link rel="modulepreload"[^>]*\/(tesseract|exceljs|mammoth|pdfjs)[^>]*>\s*/gi,
+        "",
+      );
     },
   };
 }
@@ -176,10 +209,15 @@ const plugins = [
   vitePluginManusRuntime(),
   vitePluginManusDebugCollector(),
   portfolioApiDevPlugin(),
+  vitePluginStripHeavyPreloads(),
+  vitePluginAppRobots(),
 ];
 
 export default defineConfig({
   plugins,
+  define: {
+    "import.meta.env.VITE_HOSTING_TARGET": JSON.stringify("app"),
+  },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "client", "src"),
@@ -190,7 +228,7 @@ export default defineConfig({
   envDir: path.resolve(import.meta.dirname),
   root: path.resolve(import.meta.dirname, "client"),
   build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
+    outDir: path.resolve(import.meta.dirname, "dist", "app"),
     emptyOutDir: true,
     chunkSizeWarningLimit: 650,
     rollupOptions: {
@@ -200,6 +238,8 @@ export default defineConfig({
           if (id.includes("firebase")) return "firebase";
           if (id.includes("framer-motion")) return "motion";
           if (id.includes("mammoth")) return "mammoth";
+          if (id.includes("tesseract")) return "tesseract";
+          if (id.includes("exceljs")) return "exceljs";
           if (id.includes("@radix-ui")) return "radix";
           if (id.includes("lucide-react")) return "icons";
         },

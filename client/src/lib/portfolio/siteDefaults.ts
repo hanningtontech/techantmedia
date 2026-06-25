@@ -1,4 +1,8 @@
+import { DEFAULT_PHOTO_CONTRACTS } from "@/lib/contracts/defaultContracts";
 import type { SiteContent } from "./portfolioTypes";
+import { DEFAULT_DEVELOPMENT_SETTINGS } from "./developmentDefaults";
+import { DEFAULT_EXTRACTION_SETTINGS } from "./extractionDefaults";
+import { DEFAULT_DEV_SKILL_ENTRIES } from "./developmentSkillDefaults";
 import {
   DEFAULT_PHOTO_CATEGORIES,
   DEFAULT_PHOTO_HERO_SLIDES,
@@ -97,15 +101,9 @@ export const DEFAULT_SITE_CONTENT: SiteContent = {
       order: 2,
     },
   ],
-  devSkills: [
-    "React + TypeScript",
-    "Node.js + Express",
-    "Firebase / Firestore",
-    "Tailwind CSS",
-    "Android (Kotlin)",
-    "Python + FastAPI",
-    "CI/CD & Hosting",
-  ],
+  developmentSettings: DEFAULT_DEVELOPMENT_SETTINGS,
+  extractionSettings: DEFAULT_EXTRACTION_SETTINGS,
+  devSkillEntries: DEFAULT_DEV_SKILL_ENTRIES,
   photoGallery: buildDefaultPhotoGallery(),
   photoHeroSlides: DEFAULT_PHOTO_HERO_SLIDES,
   photoCategories: DEFAULT_PHOTO_CATEGORIES,
@@ -114,4 +112,5 @@ export const DEFAULT_SITE_CONTENT: SiteContent = {
   rateCardGroups: DEFAULT_RATE_CARD_GROUPS,
   processSteps: DEFAULT_PROCESS_STEPS,
   photographySettings: DEFAULT_PHOTOGRAPHY_SETTINGS,
+  photoContracts: DEFAULT_PHOTO_CONTRACTS,
 };

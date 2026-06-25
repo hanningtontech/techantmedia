@@ -49,6 +49,14 @@
         { "fieldPath": "published", "order": "ASCENDING" },
         { "fieldPath": "assignedStudentIds", "arrayConfig": "CONTAINS" }
       ]
+    },
+    {
+      "collectionGroup": "blockGameSimPins",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pin", "order": "ASCENDING" },
+        { "fieldPath": "usedAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

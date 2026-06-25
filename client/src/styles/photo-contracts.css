@@ -1,0 +1,366 @@
+/* Contract pages — screen, mobile edge-to-edge, and print/PDF */
+
+.photo-contracts-route main {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.photo-contract-page {
+  width: 100%;
+  max-width: none;
+}
+
+.photo-contract-document {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0;
+  border: none;
+  background: #0e0e14;
+  padding: 1rem 0.75rem 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .photo-contract-document {
+    border-radius: 1rem;
+    border: 1px solid rgb(255 255 255 / 0.1);
+    padding: 1.5rem 1.25rem 1.75rem;
+  }
+}
+
+/* Per-page watermark (screen + print) */
+.photo-contract-document::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: url("/techant-contract-logo.png") center center / min(55vw, 280px) no-repeat;
+  opacity: 0.2;
+}
+
+.photo-contract-brand-header,
+.photo-contract-body,
+.photo-contract-doc-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.photo-contract-brand-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+}
+
+.photo-contract-brand-logo {
+  width: 5.5rem;
+  height: auto;
+  object-fit: contain;
+}
+
+.photo-contract-brand-name {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgb(251 146 60);
+}
+
+.photo-contract-doc-title {
+  font-size: 1.125rem;
+  font-weight: 800;
+  line-height: 1.25;
+  color: white;
+  letter-spacing: -0.02em;
+}
+
+@media (min-width: 640px) {
+  .photo-contract-brand-logo {
+    width: 6.5rem;
+  }
+  .photo-contract-doc-title {
+    font-size: 1.5rem;
+  }
+}
+
+.photo-contract-body {
+  min-width: 0;
+}
+
+.photo-contract-doc-footer {
+  margin-top: 2rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(255 255 255 / 0.1);
+  text-align: center;
+  font-size: 0.65rem;
+  color: rgb(113 113 122);
+}
+
+/* Markdown body */
+.photo-contract-page .contract-markdown {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: rgb(212 212 216);
+}
+
+@media (min-width: 640px) {
+  .photo-contract-page .contract-markdown {
+    font-size: 0.9375rem;
+    line-height: 1.65;
+  }
+}
+
+.photo-contract-page .contract-markdown h1 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: white;
+  margin-bottom: 0.75rem;
+}
+
+.photo-contract-page .contract-markdown h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: rgb(251 146 60);
+  margin-top: 1.5rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.photo-contract-page .contract-markdown h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: white;
+  margin-top: 1rem;
+  margin-bottom: 0.4rem;
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+.photo-contract-print-block {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.photo-contract-page .contract-markdown p,
+.photo-contract-page .contract-markdown li {
+  margin-bottom: 0.5rem;
+}
+
+.photo-contract-page .contract-markdown ul,
+.photo-contract-page .contract-markdown ol {
+  padding-left: 1.1rem;
+  margin-bottom: 0.75rem;
+}
+
+.photo-contract-page .contract-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0 1rem;
+  font-size: 0.75rem;
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
+@media (min-width: 640px) {
+  .photo-contract-page .contract-markdown table {
+    font-size: 0.875rem;
+  }
+}
+
+.photo-contract-page .contract-markdown th,
+.photo-contract-page .contract-markdown td {
+  border: 1px solid rgb(255 255 255 / 0.12);
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.photo-contract-page .contract-markdown th {
+  background: rgb(255 255 255 / 0.04);
+  color: rgb(251 146 60);
+  font-weight: 600;
+}
+
+.photo-contract-page .contract-markdown hr {
+  border: none;
+  border-top: 1px solid rgb(255 255 255 / 0.1);
+  margin: 1rem 0;
+}
+
+.photo-contract-page .contract-markdown strong {
+  color: white;
+}
+
+/* Hand-fill underscore lines — visible on screen and in print/PDF */
+.photo-contract-page .contract-markdown td,
+.photo-contract-page .contract-markdown li,
+.photo-contract-page .contract-markdown p {
+  word-break: break-word;
+}
+
+.photo-contract-page .contract-markdown td {
+  min-width: 6rem;
+}
+
+@media print {
+  .photo-contract-page .contract-markdown td:has(+ *),
+  .photo-contract-page .contract-markdown tr td:last-child {
+    letter-spacing: 0.02em;
+    min-height: 1.35em;
+  }
+}
+
+/* Mobile: full-bleed contract shell */
+@media (max-width: 639px) {
+  .photo-contracts-route .photo-contracts-header {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .photo-contracts-route .photo-contracts-main {
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0.75rem;
+    padding-bottom: 1rem;
+  }
+
+  .photo-contracts-list {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .photo-contracts-list ul li a {
+    border-radius: 0.75rem;
+    padding: 1rem;
+  }
+}
+
+/* ——— Print / Save as PDF ——— */
+@media print {
+  @page {
+    margin: 14mm 12mm 18mm;
+  }
+
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .tech-media-nav,
+  .tech-media-footer,
+  .photo-contract-no-print,
+  .photo-contracts-header,
+  .photo-contracts-route .photo-contracts-intro {
+    display: none !important;
+  }
+
+  .tech-media-root main,
+  .photo-contracts-route main {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+  }
+
+  .photo-contract-page {
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  .photo-contract-document {
+    border: none !important;
+    border-radius: 0 !important;
+    background: white !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Fixed watermark on every printed page */
+  .photo-contract-document::before {
+    position: fixed;
+    inset: 0;
+    background-size: 45% auto;
+    opacity: 0.2;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .photo-contract-brand-header {
+    border-bottom-color: #ccc !important;
+    margin-bottom: 8mm !important;
+    padding-bottom: 4mm !important;
+  }
+
+  .photo-contract-brand-logo {
+    width: 22mm !important;
+  }
+
+  .photo-contract-brand-name {
+    color: #c2410c !important;
+  }
+
+  .photo-contract-doc-title {
+    color: #000 !important;
+    font-size: 14pt !important;
+  }
+
+  .photo-contract-page .contract-markdown,
+  .photo-contract-page .contract-markdown p,
+  .photo-contract-page .contract-markdown li,
+  .photo-contract-page .contract-markdown h1,
+  .photo-contract-page .contract-markdown h2,
+  .photo-contract-page .contract-markdown h3,
+  .photo-contract-page .contract-markdown strong,
+  .photo-contract-page .contract-markdown th {
+    color: #000 !important;
+  }
+
+  .photo-contract-page .contract-markdown h2 {
+    color: #c2410c !important;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .photo-contract-print-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .photo-contract-page .contract-markdown {
+    font-size: 9.5pt !important;
+    line-height: 1.45 !important;
+  }
+
+  .photo-contract-page .contract-markdown table {
+    font-size: 9pt !important;
+  }
+
+  .photo-contract-page .contract-markdown th,
+  .photo-contract-page .contract-markdown td {
+    border-color: #ccc !important;
+  }
+
+  .photo-contract-doc-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin-top: 0 !important;
+    padding-top: 3mm !important;
+    border-top: 1px solid #ccc !important;
+    color: #666 !important;
+    font-size: 8pt !important;
+    background: white;
+  }
+
+  .photo-contract-body {
+    padding-bottom: 12mm;
+  }
+}

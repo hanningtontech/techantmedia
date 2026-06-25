@@ -1,0 +1,195 @@
+@keyframes sim-bomb-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  10% {
+    transform: translate(-4px, 2px);
+  }
+  20% {
+    transform: translate(4px, -2px);
+  }
+  30% {
+    transform: translate(-3px, -3px);
+  }
+  40% {
+    transform: translate(3px, 3px);
+  }
+  50% {
+    transform: translate(-2px, 1px);
+  }
+  60% {
+    transform: translate(2px, -1px);
+  }
+  70% {
+    transform: translate(-1px, 2px);
+  }
+  80% {
+    transform: translate(1px, -2px);
+  }
+}
+
+@keyframes sim-explosion-core {
+  0% {
+    transform: scale(0.2);
+    opacity: 1;
+  }
+  40% {
+    transform: scale(1.15);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@keyframes sim-explosion-ring {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.9;
+    border-width: 3px;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+    border-width: 1px;
+  }
+}
+
+@keyframes sim-explosion-flash {
+  0% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes sim-explosion-particle {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), var(--dy)) scale(0);
+    opacity: 0;
+  }
+}
+
+.sim-grid-shake {
+  animation: sim-bomb-shake 0.55s ease-out;
+  will-change: transform;
+}
+
+.sim-grid-shake--lite {
+  animation: sim-bomb-shake-lite 0.34s ease-out;
+  will-change: transform;
+}
+
+@keyframes sim-bomb-shake-lite {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(-2px, 1px);
+  }
+  50% {
+    transform: translate(2px, -1px);
+  }
+  75% {
+    transform: translate(-1px, -1px);
+  }
+}
+
+.sim-bomb-cell {
+  position: relative;
+  overflow: visible !important;
+  z-index: 2;
+  animation: sim-bomb-cell-pop 0.35s ease-out;
+}
+
+@keyframes sim-bomb-cell-pop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.sim-bomb-cell--lite {
+  position: relative;
+  overflow: visible !important;
+  z-index: 2;
+  animation: sim-bomb-cell-pop-lite 0.28s ease-out;
+}
+
+@keyframes sim-bomb-cell-pop-lite {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.sim-explosion-lite .sim-explosion-flash {
+  animation-duration: 0.32s;
+}
+
+.sim-explosion-lite .sim-explosion-core {
+  animation-duration: 0.34s;
+}
+
+.sim-explosion-flash {
+  pointer-events: none;
+  position: absolute;
+  inset: -20%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 120, 40, 0.9) 0%, rgba(255, 50, 20, 0.4) 45%, transparent 70%);
+  animation: sim-explosion-flash 0.5s ease-out forwards;
+}
+
+.sim-explosion-core {
+  pointer-events: none;
+  position: absolute;
+  inset: 5%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0%, #ff6b2b 35%, #dc2626 65%, transparent 100%);
+  animation: sim-explosion-core 0.55s ease-out forwards;
+}
+
+.sim-explosion-ring {
+  pointer-events: none;
+  position: absolute;
+  inset: -15%;
+  border-radius: 50%;
+  border: 3px solid rgba(251, 146, 60, 0.85);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+  animation: sim-explosion-ring 0.65s ease-out forwards;
+}
+
+.sim-explosion-ring--delayed {
+  animation-delay: 0.08s;
+}
+
+.sim-explosion-particle {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: #fbbf24;
+  animation: sim-explosion-particle 0.5s ease-out forwards;
+}

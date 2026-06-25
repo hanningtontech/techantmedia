@@ -17,14 +17,15 @@ type Props = {
   description?: string;
   accent?: Accent;
   defaultOpen?: boolean;
+  className?: string;
   children: ReactNode;
 };
 
-export function AdminSection({ title, description, accent = "orange", defaultOpen = true, children }: Props) {
+export function AdminSection({ title, description, accent = "orange", defaultOpen = true, className, children }: Props) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="rounded-xl border border-white/10 bg-[#12121a] overflow-hidden">
+    <Collapsible open={open} onOpenChange={setOpen} className={cn("rounded-xl border border-white/10 bg-[#12121a] overflow-hidden", className)}>
       <CollapsibleTrigger
         className={cn(
           "flex w-full min-w-0 items-start justify-between gap-3 px-4 py-4 text-left transition-colors sm:px-5",

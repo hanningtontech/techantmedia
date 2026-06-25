@@ -1,0 +1,27 @@
+# TechantMedia — public site summary
+# https://techantmedia.com
+
+> TechantMedia is a Kenya-based creative and technology studio led by Hannington Kuria Njuguna. Services: professional photography & videography, full-stack web development, and NCLEX nursing exam tutoring.
+
+## Public pages
+
+- Home: /
+- Photography & videography: /photography
+- Photo galleries: /photography/gallery/{slug}
+- Full-stack development: /development
+- NCLEX tutoring (marketing): /tutoring, /nclex-platform
+- Contact: /contact
+- Video specialist portfolio: /portfolio
+- Developer portfolio: /developer-portfolio
+
+## Do not crawl or index
+
+- /admin, /tutor/, /student/, /api/, /extraction, /written-qns
+- /photography/account, /photography/my-gallery
+- Automated training/scraping is not permitted on this site.
+
+## Contact
+
+- Email: hanningtonkuria5@mail.com
+- Phone: +254 759 550133
+- Site: https://techantmedia.com

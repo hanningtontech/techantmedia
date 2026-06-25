@@ -1,6 +1,12 @@
 {
   "projects": {
     "default": "hanningtonkutria-portfolio"
+  },
+  "targets": {
+    "hanningtonkutria-portfolio": {
+      "hosting": {
+        "marketing": ["hanningtonkutria-portfolio"]
+      }
+    }
   }
 }
-

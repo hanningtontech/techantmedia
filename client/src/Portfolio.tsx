@@ -12,6 +12,7 @@ import {
   Settings,
 } from "lucide-react";
 import { usePortfolioContent } from "@/hooks/usePortfolioContent";
+import { PrivateLink } from "@/components/navigation/PrivateLink";
 import { renderRichText } from "@/lib/portfolio/renderRichText";
 import { educationCardClass, expertiseCardClass } from "@/lib/portfolio/expertiseStyles";
 import type { BadgeTone } from "@/lib/portfolio/portfolioTypes";
@@ -104,32 +105,32 @@ export default function Portfolio() {
             <button onClick={() => scrollToSection("education")} className="text-gray-700 hover:text-orange-600 transition-colors">
               Education
             </button>
-            <Link
+            <PrivateLink
               href="/written-qns"
               className="text-gray-700 hover:text-orange-600 transition-colors font-medium"
             >
               Written QNS
-            </Link>
+            </PrivateLink>
             <Link
               href="/tutoring"
               className="text-gray-700 hover:text-orange-600 transition-colors font-medium"
             >
               NCLEX tutoring
             </Link>
-            <Link
+            <PrivateLink
               href="/tutor/nclex"
               className="text-gray-700 hover:text-orange-600 transition-colors font-medium inline-flex items-center gap-1.5"
             >
               <BookOpen className="h-4 w-4" />
               NCLEX tutor
-            </Link>
-            <Link
+            </PrivateLink>
+            <PrivateLink
               href="/admin"
               className="text-gray-700 hover:text-orange-600 transition-colors font-medium inline-flex items-center gap-1.5"
             >
               <Settings className="h-4 w-4" />
               Admin
-            </Link>
+            </PrivateLink>
             <button
               onClick={() => scrollToSection("contact")}
               className="bg-orange-600 text-white px-6 py-2 rounded-full hover:bg-orange-700 transition-colors"
@@ -160,18 +161,18 @@ export default function Portfolio() {
             <button onClick={() => scrollToSection("education")} className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded">
               Education
             </button>
-            <Link href="/written-qns" className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded font-medium">
+            <PrivateLink href="/written-qns" className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded font-medium">
               Written QNS
-            </Link>
+            </PrivateLink>
             <Link href="/tutoring" className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded font-medium">
               NCLEX tutoring
             </Link>
-            <Link href="/tutor/nclex" className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded font-medium">
+            <PrivateLink href="/tutor/nclex" className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded font-medium">
               NCLEX tutor
-            </Link>
-            <Link href="/admin" className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded font-medium">
+            </PrivateLink>
+            <PrivateLink href="/admin" className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-50 rounded font-medium">
               Admin
-            </Link>
+            </PrivateLink>
             <button
               onClick={() => scrollToSection("contact")}
               className="block w-full bg-orange-600 text-white px-4 py-2 rounded hover:bg-orange-700 transition-colors"
@@ -209,25 +210,25 @@ export default function Portfolio() {
             >
               Get in Touch
             </button>
-            <Link
+            <PrivateLink
               href="/written-qns"
               className="w-full sm:w-auto inline-flex justify-center items-center border-2 border-white/90 text-white hover:bg-white/10 px-8 py-4 rounded-full text-lg font-semibold transition-all duration-300"
             >
               Written QNS
-            </Link>
+            </PrivateLink>
             <Link
               href="/tutoring"
               className="w-full sm:w-auto inline-flex justify-center items-center border-2 border-white/90 text-white hover:bg-white/10 px-8 py-4 rounded-full text-lg font-semibold transition-all duration-300"
             >
               NCLEX tutoring
             </Link>
-            <Link
+            <PrivateLink
               href="/tutor/nclex"
               className="w-full sm:w-auto inline-flex justify-center items-center gap-2 border-2 border-white/90 text-white hover:bg-white/10 px-8 py-4 rounded-full text-lg font-semibold transition-all duration-300"
             >
               <BookOpen className="h-5 w-5" />
               NCLEX tutor
-            </Link>
+            </PrivateLink>
           </div>
         </div>
       </section>

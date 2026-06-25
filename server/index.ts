@@ -9,6 +9,8 @@ import { config as loadEnv } from "dotenv";
 import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { requireAdminWithAnyScope, requireSuperAdmin } from "./adminAuth.js";
+import { registerContentRoutes } from "./contentRoutes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -137,6 +139,22 @@ async function requireAdmin(req: express.Request): Promise<{ uid: string }> {
   return { uid };
 }
 
+async function requireClientOwnUpload(req: express.Request, clientUserId: string): Promise<{ uid: string }> {
+  const header = String(req.headers.authorization ?? "");
+  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
+  if (!token) throw new Error("Missing auth token");
+
+  initAdmin();
+  const decoded = await getAuth().verifyIdToken(token);
+  const uid = decoded.uid;
+  if (uid !== clientUserId) throw new Error("Forbidden");
+
+  const snap = await getFirestore().doc(`users/${uid}`).get();
+  const role = (snap.exists ? String((snap.data() as any)?.role ?? "") : "").toLowerCase().trim();
+  if (role !== "client") throw new Error("Forbidden");
+  return { uid };
+}
+
 async function requireTutorOrAdmin(req: express.Request): Promise<{ uid: string }> {
   const header = String(req.headers.authorization ?? "");
   const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
@@ -185,17 +203,32 @@ async function b2GetUploadUrl(auth: { apiUrl: string; authorizationToken: string
   return { uploadUrl: String(d.uploadUrl), uploadAuthToken: String(d.authorizationToken) };
 }
 
+/** Match Firebase Functions Gen2 HTTP request body cap (~32 MiB). */
+const IMAGE_UPLOAD_LIMIT = "32mb";
+const PRESENTATION_UPLOAD_LIMIT = "60mb";
+const XAI_PORTFOLIO_UPLOAD_LIMIT = "200mb";
+const JSON_BODY_LIMIT = "8mb";
+
+function isB2UploadPost(req: express.Request) {
+  const p = req.path || (req.url ?? "").split("?")[0] || "";
+  return req.method === "POST" && p.startsWith("/api/b2/");
+}
+
 /** Express app with /api routes only (used by Vite dev on :5000 and by production server). */
 export function createApiApp() {
   const app = express();
 
-  // JSON for API routes
-  app.use(express.json({ limit: "2mb" }));
+  // JSON for API routes — skip B2 binary uploads (handled by route-level express.raw).
+  app.use((req, res, next) => {
+    if (isB2UploadPost(req)) return next();
+    return express.json({ limit: JSON_BODY_LIMIT })(req, res, next);
+  });
 
   // Upload endpoint: raw binary body (pptx)
+  registerContentRoutes(app);
   app.post(
     "/api/b2/presentations/:docId",
-    express.raw({ type: "*/*", limit: "60mb" }),
+    express.raw({ type: "*/*", limit: PRESENTATION_UPLOAD_LIMIT }),
     async (req, res) => {
       try {
         await requireAdmin(req);
@@ -253,7 +286,7 @@ export function createApiApp() {
 
   app.post(
     "/api/b2/quiz-images/:uploadId",
-    express.raw({ type: "*/*", limit: "15mb" }),
+    express.raw({ type: "*/*", limit: IMAGE_UPLOAD_LIMIT }),
     async (req, res) => {
       try {
         await requireTutorOrAdmin(req);
@@ -315,11 +348,264 @@ export function createApiApp() {
   );
 
   app.post(
-    "/api/b2/portfolio-images/:uploadId",
-    express.raw({ type: "*/*", limit: "15mb" }),
+    "/api/b2/client-gallery-images/:clientUserId/:uploadId",
+    express.raw({ type: "*/*", limit: IMAGE_UPLOAD_LIMIT }),
     async (req, res) => {
       try {
-        await requireAdmin(req);
+        await requireAdminWithAnyScope(req, ["photography"]);
+        const clientUserId = String(req.params.clientUserId ?? "").trim();
+        const uploadId = String(req.params.uploadId ?? "").trim();
+        if (!clientUserId || !uploadId) return res.status(400).json({ error: "Missing clientUserId or uploadId" });
+
+        const fileNameHeader = String(req.headers["x-file-name"] ?? "").trim();
+        const originalName = fileNameHeader || "image.png";
+        const lower = originalName.toLowerCase();
+        if (
+          !(
+            lower.endsWith(".png") ||
+            lower.endsWith(".jpg") ||
+            lower.endsWith(".jpeg") ||
+            lower.endsWith(".gif") ||
+            lower.endsWith(".webp")
+          )
+        ) {
+          return res.status(400).json({ error: "Only .png, .jpg, .jpeg, .gif, or .webp images are supported" });
+        }
+
+        const body = req.body as Buffer;
+        if (!body || !Buffer.isBuffer(body) || body.length === 0) {
+          return res.status(400).json({ error: "Missing file bytes" });
+        }
+
+        const contentType = String(req.headers["content-type"] ?? "").trim() || "application/octet-stream";
+        const sha1 = crypto.createHash("sha1").update(body).digest("hex");
+
+        const b2 = await b2Authorize();
+        const up = await b2GetUploadUrl(b2);
+        const bucketName = requireEnv("B2_BUCKET_NAME");
+
+        const b2FileName = `client-gallery-images/${clientUserId}/${uploadId}/${originalName}`;
+        const uploadRes = await axios.post(up.uploadUrl, body, {
+          headers: {
+            Authorization: up.uploadAuthToken,
+            "X-Bz-File-Name": encodeURIComponent(b2FileName).replace(/%2F/g, "/"),
+            "Content-Type": contentType,
+            "X-Bz-Content-Sha1": sha1,
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+
+        const out = uploadRes.data as any;
+        const fileId = String(out.fileId ?? "");
+        const fileName = String(out.fileName ?? b2FileName);
+        const downloadUrl = `${b2.downloadUrl}/file/${encodeURIComponent(bucketName)}/${fileName
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}`;
+
+        return res.json({ fileId, fileName, downloadUrl, sizeBytes: body.length, contentType });
+      } catch (e: unknown) {
+        return sendApiError(res, e, 400);
+      }
+    },
+  );
+
+  const SIGNED_CONTRACT_LIMIT = "20mb";
+  const CONTRACT_PDF_LIMIT = "25mb";
+
+  app.post(
+    "/api/b2/contract-pdfs/:slug/:uploadId",
+    express.raw({ type: "*/*", limit: CONTRACT_PDF_LIMIT }),
+    async (req, res) => {
+      try {
+        await requireAdminWithAnyScope(req, ["photography"]);
+        const slug = String(req.params.slug ?? "").trim();
+        const uploadId = String(req.params.uploadId ?? "").trim();
+        if (!slug || !uploadId) return res.status(400).json({ error: "Missing slug or uploadId" });
+
+        const fileNameHeader = String(req.headers["x-file-name"] ?? "").trim();
+        const originalName = fileNameHeader || "contract.pdf";
+        if (!originalName.toLowerCase().endsWith(".pdf")) {
+          return res.status(400).json({ error: "Only .pdf files are supported" });
+        }
+
+        const body = req.body as Buffer;
+        if (!body || !Buffer.isBuffer(body) || body.length === 0) {
+          return res.status(400).json({ error: "Missing file bytes" });
+        }
+
+        const contentType = String(req.headers["content-type"] ?? "").trim() || "application/pdf";
+        const sha1 = crypto.createHash("sha1").update(body).digest("hex");
+
+        const b2 = await b2Authorize();
+        const up = await b2GetUploadUrl(b2);
+        const bucketName = requireEnv("B2_BUCKET_NAME");
+
+        const b2FileName = `contract-pdfs/${slug}/${uploadId}/${originalName}`;
+        const uploadRes = await axios.post(up.uploadUrl, body, {
+          headers: {
+            Authorization: up.uploadAuthToken,
+            "X-Bz-File-Name": encodeURIComponent(b2FileName).replace(/%2F/g, "/"),
+            "Content-Type": contentType,
+            "X-Bz-Content-Sha1": sha1,
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+
+        const out = uploadRes.data as any;
+        const fileId = String(out.fileId ?? "");
+        const fileName = String(out.fileName ?? b2FileName);
+        const downloadUrl = `${b2.downloadUrl}/file/${encodeURIComponent(bucketName)}/${fileName
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}`;
+
+        return res.json({ fileId, fileName, downloadUrl, sizeBytes: body.length, contentType });
+      } catch (e: unknown) {
+        return sendApiError(res, e, 400);
+      }
+    },
+  );
+
+  app.post(
+    "/api/b2/signed-contracts/:clientUserId/:uploadId",
+    express.raw({ type: "*/*", limit: SIGNED_CONTRACT_LIMIT }),
+    async (req, res) => {
+      try {
+        const clientUserId = String(req.params.clientUserId ?? "").trim();
+        const uploadId = String(req.params.uploadId ?? "").trim();
+        if (!clientUserId || !uploadId) return res.status(400).json({ error: "Missing clientUserId or uploadId" });
+        await requireClientOwnUpload(req, clientUserId);
+
+        const fileNameHeader = String(req.headers["x-file-name"] ?? "").trim();
+        const originalName = fileNameHeader || "signed-contract.pdf";
+        const lower = originalName.toLowerCase();
+        if (
+          !(
+            lower.endsWith(".pdf") ||
+            lower.endsWith(".png") ||
+            lower.endsWith(".jpg") ||
+            lower.endsWith(".jpeg")
+          )
+        ) {
+          return res.status(400).json({ error: "Only .pdf, .png, .jpg, or .jpeg files are supported" });
+        }
+
+        const body = req.body as Buffer;
+        if (!body || !Buffer.isBuffer(body) || body.length === 0) {
+          return res.status(400).json({ error: "Missing file bytes" });
+        }
+
+        const contentType = String(req.headers["content-type"] ?? "").trim() || "application/octet-stream";
+        const sha1 = crypto.createHash("sha1").update(body).digest("hex");
+
+        const b2 = await b2Authorize();
+        const up = await b2GetUploadUrl(b2);
+        const bucketName = requireEnv("B2_BUCKET_NAME");
+
+        const b2FileName = `signed-contracts/${clientUserId}/${uploadId}/${originalName}`;
+        const uploadRes = await axios.post(up.uploadUrl, body, {
+          headers: {
+            Authorization: up.uploadAuthToken,
+            "X-Bz-File-Name": encodeURIComponent(b2FileName).replace(/%2F/g, "/"),
+            "Content-Type": contentType,
+            "X-Bz-Content-Sha1": sha1,
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+
+        const out = uploadRes.data as any;
+        const fileId = String(out.fileId ?? "");
+        const fileName = String(out.fileName ?? b2FileName);
+        const downloadUrl = `${b2.downloadUrl}/file/${encodeURIComponent(bucketName)}/${fileName
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}`;
+
+        return res.json({ fileId, fileName, downloadUrl, sizeBytes: body.length, contentType });
+      } catch (e: unknown) {
+        return sendApiError(res, e, 400);
+      }
+    },
+  );
+
+  const AUDIO_UPLOAD_LIMIT = "48mb";
+
+  app.post(
+    "/api/b2/livestream-audio/:uploadId",
+    express.raw({ type: "*/*", limit: AUDIO_UPLOAD_LIMIT }),
+    async (req, res) => {
+      try {
+        await requireSuperAdmin(req);
+        const uploadId = String(req.params.uploadId ?? "").trim();
+        if (!uploadId) return res.status(400).json({ error: "Missing uploadId" });
+
+        const fileNameHeader = String(req.headers["x-file-name"] ?? "").trim();
+        const originalName = fileNameHeader || "track.mp3";
+        const lower = originalName.toLowerCase();
+        if (
+          !(
+            lower.endsWith(".mp3") ||
+            lower.endsWith(".m4a") ||
+            lower.endsWith(".wav") ||
+            lower.endsWith(".ogg") ||
+            lower.endsWith(".aac")
+          )
+        ) {
+          return res.status(400).json({ error: "Supported audio: .mp3, .m4a, .wav, .ogg, .aac" });
+        }
+
+        const body = req.body as Buffer;
+        if (!body || !Buffer.isBuffer(body) || body.length === 0) {
+          return res.status(400).json({ error: "Missing file bytes" });
+        }
+        if (body.length > 48 * 1024 * 1024) {
+          return res.status(413).json({ error: "Audio too large. Maximum size is 48 MB." });
+        }
+
+        const contentType = String(req.headers["content-type"] ?? "").trim() || "audio/mpeg";
+        const sha1 = crypto.createHash("sha1").update(body).digest("hex");
+
+        const b2 = await b2Authorize();
+        const up = await b2GetUploadUrl(b2);
+        const bucketName = requireEnv("B2_BUCKET_NAME");
+
+        const b2FileName = `livestream-audio/${uploadId}/${originalName}`;
+        const uploadRes = await axios.post(up.uploadUrl, body, {
+          headers: {
+            Authorization: up.uploadAuthToken,
+            "X-Bz-File-Name": encodeURIComponent(b2FileName).replace(/%2F/g, "/"),
+            "Content-Type": contentType,
+            "X-Bz-Content-Sha1": sha1,
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+
+        const out = uploadRes.data as { fileId?: string; fileName?: string };
+        const fileId = String(out.fileId ?? "");
+        const fileName = String(out.fileName ?? b2FileName);
+        const downloadUrl = `${b2.downloadUrl}/file/${encodeURIComponent(bucketName)}/${fileName
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}`;
+
+        return res.json({ fileId, fileName, downloadUrl, sizeBytes: body.length, contentType });
+      } catch (e: unknown) {
+        return sendApiError(res, e, 400);
+      }
+    },
+  );
+
+  app.post(
+    "/api/b2/portfolio-images/:uploadId",
+    express.raw({ type: "*/*", limit: IMAGE_UPLOAD_LIMIT }),
+    async (req, res) => {
+      try {
+        await requireAdminWithAnyScope(req, ["development", "photography", "xai"]);
         const uploadId = String(req.params.uploadId ?? "").trim();
         if (!uploadId) return res.status(400).json({ error: "Missing uploadId" });
 
@@ -377,6 +663,220 @@ export function createApiApp() {
     },
   );
 
+  app.post(
+    "/api/b2/xai-portfolio-files/:uploadId",
+    express.raw({ type: "*/*", limit: XAI_PORTFOLIO_UPLOAD_LIMIT }),
+    async (req, res) => {
+      try {
+        await requireAdminWithAnyScope(req, ["xai"]);
+        const uploadId = String(req.params.uploadId ?? "").trim();
+        if (!uploadId) return res.status(400).json({ error: "Missing uploadId" });
+
+        const fileNameHeader = String(req.headers["x-file-name"] ?? "").trim();
+        const originalName = fileNameHeader || "file.bin";
+        const lower = originalName.toLowerCase();
+        const allowed =
+          lower.endsWith(".png") ||
+          lower.endsWith(".jpg") ||
+          lower.endsWith(".jpeg") ||
+          lower.endsWith(".gif") ||
+          lower.endsWith(".webp") ||
+          lower.endsWith(".pdf") ||
+          lower.endsWith(".mp4") ||
+          lower.endsWith(".webm") ||
+          lower.endsWith(".mov") ||
+          lower.endsWith(".m4v");
+        if (!allowed) {
+          return res.status(400).json({
+            error: "Supported: .png, .jpg, .jpeg, .gif, .webp, .pdf, .mp4, .webm, .mov, .m4v",
+          });
+        }
+
+        const body = req.body as Buffer;
+        if (!body || !Buffer.isBuffer(body) || body.length === 0) {
+          return res.status(400).json({ error: "Missing file bytes" });
+        }
+
+        const contentType = String(req.headers["content-type"] ?? "").trim() || "application/octet-stream";
+        const sha1 = crypto.createHash("sha1").update(body).digest("hex");
+
+        const b2 = await b2Authorize();
+        const up = await b2GetUploadUrl(b2);
+        const bucketName = requireEnv("B2_BUCKET_NAME");
+
+        const b2FileName = `xai-portfolio/${uploadId}/${originalName}`;
+        const uploadRes = await axios.post(up.uploadUrl, body, {
+          headers: {
+            Authorization: up.uploadAuthToken,
+            "X-Bz-File-Name": encodeURIComponent(b2FileName).replace(/%2F/g, "/"),
+            "Content-Type": contentType,
+            "X-Bz-Content-Sha1": sha1,
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+
+        const out = uploadRes.data as { fileId?: string; fileName?: string };
+        const fileName = String(out.fileName ?? b2FileName);
+        const downloadUrl = `${b2.downloadUrl}/file/${encodeURIComponent(bucketName)}/${fileName
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}`;
+
+        return res.json({ fileId: String(out.fileId ?? ""), fileName, downloadUrl, sizeBytes: body.length, contentType });
+      } catch (e: unknown) {
+        return sendApiError(res, e, 400);
+      }
+    },
+  );
+
+  const SUPER_ADMIN_EMAIL = "hanningtonkuria5@gmail.com";
+  const VALID_ADMIN_SCOPES = ["development", "xai", "photography", "tutoring", "settings"] as const;
+
+  function parseAdminScopes(raw: unknown): string[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((s): s is string => typeof s === "string" && (VALID_ADMIN_SCOPES as readonly string[]).includes(s));
+  }
+
+  function isSuperAdminDoc(data: Record<string, unknown> | null | undefined, email?: string | null): boolean {
+    if (data?.isSuperAdmin === true) return true;
+    const e = (email ?? String(data?.email ?? "")).trim().toLowerCase();
+    return e === SUPER_ADMIN_EMAIL.toLowerCase();
+  }
+
+  async function requireSuperAdmin(req: express.Request): Promise<{ uid: string }> {
+    const { uid } = await requireAdmin(req);
+    const snap = await getFirestore().doc(`users/${uid}`).get();
+    const header = String(req.headers.authorization ?? "");
+    const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
+    const decoded = token ? await getAuth().verifyIdToken(token) : null;
+    const data = (snap.exists ? (snap.data() as Record<string, unknown>) : null) ?? null;
+    if (!isSuperAdminDoc(data, decoded?.email ?? null)) throw new Error("Forbidden");
+    return { uid };
+  }
+
+  app.post("/api/admin/bootstrap", async (req, res) => {
+    try {
+      initAdmin();
+      const header = String(req.headers.authorization ?? "");
+      const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
+      if (!token) return res.status(401).json({ error: "Missing auth token" });
+
+      const decoded = await getAuth().verifyIdToken(token);
+      const email = (decoded.email ?? "").trim().toLowerCase();
+      if (email !== SUPER_ADMIN_EMAIL.toLowerCase()) {
+        return res.status(403).json({ error: "This account cannot use bootstrap" });
+      }
+
+      await getFirestore()
+        .doc(`users/${decoded.uid}`)
+        .set(
+          {
+            email: decoded.email ?? email,
+            name: decoded.name ?? "",
+            role: "admin",
+            isSuperAdmin: true,
+            adminScopes: [...VALID_ADMIN_SCOPES],
+            approvalStatus: "approved",
+            authMethod: "passwordless",
+            updatedAt: new Date(),
+          },
+          { merge: true },
+        );
+
+      return res.json({ ok: true, role: "admin" });
+    } catch (e: unknown) {
+      return sendApiError(res, e);
+    }
+  });
+
+  app.get("/api/admin/users", async (req, res) => {
+    try {
+      await requireSuperAdmin(req);
+      const snap = await getFirestore().collection("users").where("role", "==", "admin").get();
+      const admins = snap.docs.map((d) => {
+        const data = d.data() as Record<string, unknown>;
+        return {
+          uid: d.id,
+          email: String(data.email ?? ""),
+          name: String(data.name ?? ""),
+          role: String(data.role ?? ""),
+          isSuperAdmin: isSuperAdminDoc(data, String(data.email ?? "")),
+          adminScopes: parseAdminScopes(data.adminScopes),
+        };
+      });
+      return res.json({ admins });
+    } catch (e: unknown) {
+      return sendApiError(res, e);
+    }
+  });
+
+  app.post("/api/admin/users", async (req, res) => {
+    try {
+      await requireSuperAdmin(req);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const email = String(body.email ?? "").trim().toLowerCase();
+      const password = String(body.password ?? "");
+      const name = String(body.name ?? "").trim();
+      const adminScopes = parseAdminScopes(body.adminScopes);
+      if (!email || !password) return res.status(400).json({ error: "Email and password are required" });
+      if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters" });
+      if (!adminScopes.length) return res.status(400).json({ error: "Select at least one feature area" });
+      if (email === SUPER_ADMIN_EMAIL.toLowerCase()) {
+        return res.status(400).json({ error: "Owner account is managed via Google sign-in" });
+      }
+
+      const userRecord = await getAuth().createUser({
+        email,
+        password,
+        displayName: name || undefined,
+      });
+
+      await getFirestore()
+        .doc(`users/${userRecord.uid}`)
+        .set(
+          {
+            email,
+            name: name || email.split("@")[0],
+            role: "admin",
+            isSuperAdmin: false,
+            adminScopes,
+            approvalStatus: "approved",
+            authMethod: "password",
+            createdAt: new Date(),
+          },
+          { merge: true },
+        );
+
+      return res.json({ uid: userRecord.uid, email });
+    } catch (e: unknown) {
+      return sendApiError(res, e);
+    }
+  });
+
+  app.patch("/api/admin/users/:uid", async (req, res) => {
+    try {
+      await requireSuperAdmin(req);
+      const targetUid = String(req.params.uid ?? "").trim();
+      if (!targetUid) return res.status(400).json({ error: "Missing user id" });
+      const targetSnap = await getFirestore().doc(`users/${targetUid}`).get();
+      if (!targetSnap.exists) return res.status(404).json({ error: "Not found" });
+      const targetData = targetSnap.data() as Record<string, unknown>;
+      if (isSuperAdminDoc(targetData, String(targetData.email ?? ""))) {
+        return res.status(400).json({ error: "Cannot change owner permissions" });
+      }
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const adminScopes = parseAdminScopes(body.adminScopes);
+      if (!adminScopes.length) return res.status(400).json({ error: "Select at least one feature area" });
+      await getFirestore()
+        .doc(`users/${targetUid}`)
+        .set({ adminScopes, updatedAt: new Date() }, { merge: true });
+      return res.json({ ok: true, adminScopes });
+    } catch (e: unknown) {
+      return sendApiError(res, e);
+    }
+  });
+
   app.delete("/api/b2/presentations", async (req, res) => {
     try {
       await requireAdmin(req);
@@ -396,6 +896,128 @@ export function createApiApp() {
       const status = msg === "Forbidden" ? 403 : msg.startsWith("Missing ") ? 500 : 400;
       return res.status(status).json({ error: msg });
     }
+  });
+
+  app.post(
+    "/api/b2/portfolio-cv/:uploadId",
+    express.raw({ type: "*/*", limit: CONTRACT_PDF_LIMIT }),
+    async (req, res) => {
+      try {
+        await requireAdminWithAnyScope(req, ["development", "photography"]);
+        const uploadId = String(req.params.uploadId ?? "").trim();
+        if (!uploadId) return res.status(400).json({ error: "Missing uploadId" });
+
+        const fileNameHeader = String(req.headers["x-file-name"] ?? "").trim();
+        const originalName = fileNameHeader || "Hannington_Kuria_Njuguna_Developer_CV.pdf";
+        if (!originalName.toLowerCase().endsWith(".pdf")) {
+          return res.status(400).json({ error: "Only .pdf files are supported" });
+        }
+
+        const body = req.body as Buffer;
+        if (!body || !Buffer.isBuffer(body) || body.length === 0) {
+          return res.status(400).json({ error: "Missing file bytes" });
+        }
+
+        const contentType = String(req.headers["content-type"] ?? "").trim() || "application/pdf";
+        const sha1 = crypto.createHash("sha1").update(body).digest("hex");
+
+        const b2 = await b2Authorize();
+        const up = await b2GetUploadUrl(b2);
+        const bucketName = requireEnv("B2_BUCKET_NAME");
+
+        const b2FileName = `portfolio-cv/${uploadId}/${originalName}`;
+        const uploadRes = await axios.post(up.uploadUrl, body, {
+          headers: {
+            Authorization: up.uploadAuthToken,
+            "X-Bz-File-Name": encodeURIComponent(b2FileName).replace(/%2F/g, "/"),
+            "Content-Type": contentType,
+            "X-Bz-Content-Sha1": sha1,
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        });
+
+        const out = uploadRes.data as { fileId?: string; fileName?: string };
+        const fileName = String(out.fileName ?? b2FileName);
+        const downloadUrl = `${b2.downloadUrl}/file/${encodeURIComponent(bucketName)}/${fileName
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}`;
+
+        return res.json({ fileId: String(out.fileId ?? ""), fileName, downloadUrl, sizeBytes: body.length, contentType });
+      } catch (e: unknown) {
+        return sendApiError(res, e, 400);
+      }
+    },
+  );
+
+  app.get("/api/download-dev-cv", async (req, res) => {
+    try {
+      initAdmin();
+      const snap = await getFirestore().doc("portfolio/site").get();
+      const dev = (snap.data()?.developmentSettings ?? {}) as {
+        cvDownloadUrl?: string;
+        cvFileName?: string;
+      };
+      const url = String(dev.cvDownloadUrl ?? "").trim();
+      const fileName =
+        String(dev.cvFileName ?? "Hannington_Kuria_Njuguna_Developer_CV.pdf").trim() ||
+        "Hannington_Kuria_Njuguna_Developer_CV.pdf";
+      if (!url) return res.status(404).json({ error: "CV not uploaded" });
+      const forceDownload = String(req.query.download ?? "") === "1";
+      const upstream = await fetch(url);
+      if (!upstream.ok) {
+        return res.status(502).json({ error: "Could not fetch CV file" });
+      }
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `${forceDownload ? "attachment" : "inline"}; filename="${fileName.replace(/"/g, "")}"`,
+      );
+      res.setHeader("Cache-Control", "public, max-age=300");
+      return res.send(buf);
+    } catch (e) {
+      return sendApiError(res, e);
+    }
+  });
+
+  app.get("/api/download-cv", async (req, res) => {
+    try {
+      initAdmin();
+      const snap = await getFirestore().doc("portfolio/xai").get();
+      const data = snap.data() as { cvDownloadUrl?: string; cvFileName?: string; publicEnabled?: boolean } | undefined;
+      if (data?.publicEnabled === false) return res.status(404).json({ error: "Not available" });
+      const url = String(data?.cvDownloadUrl ?? "").trim();
+      const fileName =
+        String(data?.cvFileName ?? "hannington_kuria_njuguna_cv.pdf").trim() || "hannington_kuria_njuguna_cv.pdf";
+      if (!url) return res.status(404).json({ error: "CV not uploaded" });
+      const forceDownload = String(req.query.download ?? "") === "1";
+      const upstream = await fetch(url);
+      if (!upstream.ok) {
+        return res.status(502).json({ error: "Could not fetch CV file" });
+      }
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `${forceDownload ? "attachment" : "inline"}; filename="${fileName.replace(/"/g, "")}"`,
+      );
+      res.setHeader("Cache-Control", "public, max-age=300");
+      return res.send(buf);
+    } catch (e) {
+      return sendApiError(res, e);
+    }
+  });
+
+  app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const e = err as { type?: string; status?: number; message?: string };
+    if (e?.type === "entity.too.large" || e?.status === 413) {
+      return res.status(413).json({
+        error: "File too large. Photos must be under 32 MB each (try exporting a smaller JPEG).",
+      });
+    }
+    next(err);
   });
 
   return app;

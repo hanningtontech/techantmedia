@@ -36,8 +36,11 @@ export default function StudentPresentationViewer() {
         if (!row) throw new Error("Presentation not found.");
         if (!cancelled) {
           setTitle(row.title || row.filename || "Presentation");
-          // Use our public proxy URL (reliable for Office viewer + downloads).
-          setDownloadUrl(`${window.location.origin}/api/public/presentations/${encodeURIComponent(pid)}`);
+          // Use B2 URL directly (avoids proxying large files through Firebase Hosting).
+          const fileUrl = String(row.downloadUrl ?? "").trim();
+          setDownloadUrl(
+            fileUrl || `${window.location.origin}/api/public/presentations/${encodeURIComponent(pid)}`,
+          );
         }
       } catch (e) {
         toast.error(formatAuthOrFirestoreError(e));
