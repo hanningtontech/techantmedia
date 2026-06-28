@@ -58,6 +58,21 @@
   opacity: 0;
 }
 
+.game-cell--bomb-pop {
+  animation: game-cell-bomb-pop 0.12s ease-out;
+}
+
+@keyframes game-cell-bomb-pop {
+  0% {
+    transform: scale(0.9);
+    filter: brightness(1.35);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
 .game-board-tray {
   width: fit-content;
   max-width: 100%;
@@ -67,6 +82,14 @@
   padding: 0.5rem 0.625rem;
   transition: width 0.22s ease, min-height 0.22s ease;
   overflow: hidden;
+}
+
+.game-board-tray--fill-box {
+  padding: 0.375rem 0.5rem;
+}
+
+.game-board-tray--cascade .game-cell {
+  transition-duration: 0.08s;
 }
 
 @media (min-width: 1024px) {

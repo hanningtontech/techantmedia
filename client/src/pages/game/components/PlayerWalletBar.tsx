@@ -1,9 +1,11 @@
 import { ChevronDown, Minus, Plus, Volume2, VolumeX, Wallet, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { AdaptiveKesAmount } from "@/components/game/AdaptiveKesAmount";
 import { useBlockGamePlayer } from "@/contexts/BlockGamePlayerContext";
 import { MAX_STAKE_KES, MIN_STAKE_KES } from "@/lib/game/constants";
 import { isValidTargetBalance, minTargetBalance } from "@/lib/game/targetMode";
 import { scrollInputIntoView } from "@/hooks/usePhoneKeyboardInset";
+import { useShortLaptopGameLayout } from "@/hooks/useShortLaptopGameLayout";
 import { Button } from "@/components/ui/button";
 import { FundRequestDialog } from "./FundRequestDialog";
 import { GridAppearanceSettingsButton } from "./GridAppearancePanel";
@@ -118,7 +120,7 @@ function AddFundsField({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-function TargetField() {
+function TargetField({ phoneCompact = false }: { phoneCompact?: boolean }) {
   const {
     sessionTarget,
     setPlayerTarget,
@@ -155,11 +157,21 @@ function TargetField() {
 
   return (
     <div className="min-w-0">
-      <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">
-        Session target
+      <label
+        className={cn(
+          "mb-1 block font-medium uppercase tracking-wide text-zinc-500",
+          phoneCompact ? "text-[9px]" : "text-[10px]",
+        )}
+      >
+        {phoneCompact ? "Target" : "Session target"}
       </label>
       <div className="relative min-w-0">
-        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] font-medium text-zinc-500">
+        <span
+          className={cn(
+            "pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 font-medium text-zinc-500",
+            phoneCompact ? "text-[9px]" : "text-[10px]",
+          )}
+        >
           KES
         </span>
         <input
@@ -167,7 +179,7 @@ function TargetField() {
           inputMode="numeric"
           disabled={playing}
           value={val}
-          placeholder="Optional"
+          placeholder={phoneCompact ? "—" : "Optional"}
           min={minTarget}
           step={10}
           onChange={(e) => setVal(e.target.value)}
@@ -181,6 +193,7 @@ function TargetField() {
           onFocus={(e) => scrollInputIntoView(e.currentTarget)}
           className={cn(
             fieldClass,
+            phoneCompact ? "h-8 text-xs" : undefined,
             "pl-9 text-amber-200 placeholder:text-zinc-600 disabled:opacity-60",
             hasVal && !valid && "border-amber-500/60",
           )}
@@ -200,22 +213,26 @@ function TargetField() {
         )}
       </div>
       {sessionTarget != null ? (
-        <div className="mt-1">
+        <div className={phoneCompact ? "mt-0.5" : "mt-1"}>
           <div className="h-1 overflow-hidden rounded-full bg-zinc-800">
             <div
               className="h-full bg-gradient-to-r from-amber-600 to-amber-400 transition-all duration-700"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="mt-0.5 truncate text-[9px] text-zinc-600">
-            {progress}% of {formatKes(sessionTarget)}
-          </p>
+          {!phoneCompact && (
+            <p className="mt-0.5 truncate text-[9px] text-zinc-600">
+              {progress}% of {formatKes(sessionTarget)}
+            </p>
+          )}
         </div>
       ) : hasVal && !valid ? (
-        <p className="mt-1 truncate text-[9px] text-amber-400/90">Min {formatKes(minTarget)}</p>
-      ) : (
+        <p className={cn("mt-1 truncate text-amber-400/90", phoneCompact ? "text-[8px]" : "text-[9px]")}>
+          Min {formatKes(minTarget)}
+        </p>
+      ) : !phoneCompact ? (
         <p className="mt-1 truncate text-[9px] text-zinc-600">Optional goal — 2× balance min</p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -231,6 +248,8 @@ function WalletIconToolbar({
   chartPanelMode: string;
   openChartInNewTab: () => void;
 }) {
+  const isShortLaptop = useShortLaptopGameLayout();
+
   return (
     <div className="flex items-center gap-0.5">
       <Button
@@ -244,7 +263,7 @@ function WalletIconToolbar({
         {soundMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
       </Button>
       <ChartPanelToggleButton />
-      {chartPanelMode === "open" && (
+      {chartPanelMode === "open" && !isShortLaptop && (
         <Button
           type="button"
           size="sm"
@@ -266,7 +285,19 @@ function StakeOrFundsSlot({ onOpenFunds }: { onOpenFunds: () => void }) {
   return <StakeField />;
 }
 
-export function PlayerWalletBar({ phoneMode = false }: { phoneMode?: boolean }) {
+export function PlayerWalletBar({
+  phoneMode = false,
+  sideColumn = false,
+  phoneWalletExpanded,
+  onPhoneWalletExpandedChange,
+}: {
+  phoneMode?: boolean;
+  /** Compact layout when wallet sits in the right column beside the grid. */
+  sideColumn?: boolean;
+  /** Controlled expand state for phone wallet panel. */
+  phoneWalletExpanded?: boolean;
+  onPhoneWalletExpandedChange?: (expanded: boolean) => void;
+}) {
   const {
     displayBalance,
     balanceAnimating,
@@ -281,7 +312,9 @@ export function PlayerWalletBar({ phoneMode = false }: { phoneMode?: boolean }) 
     status,
   } = useBlockGamePlayer();
   const [fundOpen, setFundOpen] = useState(false);
-  const [walletExpanded, setWalletExpanded] = useState(false);
+  const [internalWalletExpanded, setInternalWalletExpanded] = useState(false);
+  const walletExpanded = phoneWalletExpanded ?? internalWalletExpanded;
+  const setWalletExpanded = onPhoneWalletExpandedChange ?? setInternalWalletExpanded;
   const shownBalance = displayBalance;
   const needsFunds = accountBalance < MIN_STAKE_KES && status !== "playing";
 
@@ -302,11 +335,11 @@ export function PlayerWalletBar({ phoneMode = false }: { phoneMode?: boolean }) 
                 <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Balance</p>
                 <p
                   className={cn(
-                    "text-2xl font-bold leading-tight tabular-nums text-emerald-300",
+                    "text-2xl font-bold leading-tight text-emerald-300",
                     balanceAnimating && "animate-pulse",
                   )}
                 >
-                  {formatKes(shownBalance)}
+                  <AdaptiveKesAmount amount={shownBalance} className="text-2xl font-bold text-emerald-300" />
                 </p>
               </div>
               <button
@@ -331,12 +364,12 @@ export function PlayerWalletBar({ phoneMode = false }: { phoneMode?: boolean }) 
           </div>
 
           {walletExpanded && (
-            <div className="max-h-[38vh] overflow-y-auto border-t border-white/10 px-2.5 pb-2.5 pt-2">
-              <div className="grid grid-cols-2 gap-2">
+            <div className="max-h-[30vh] overflow-y-auto border-t border-white/10 px-2.5 pb-2 pt-2">
+              <div className="grid grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)] gap-2">
                 <StakeOrFundsSlot onOpenFunds={() => setFundOpen(true)} />
-                <TargetField />
+                <TargetField phoneCompact />
               </div>
-              <p className="mt-1.5 text-[9px] text-zinc-600">{gamesPlayed.toLocaleString()} rounds played</p>
+              <p className="mt-1 text-[8px] text-zinc-600">{gamesPlayed.toLocaleString()} rounds played</p>
             </div>
           )}
         </div>
@@ -348,21 +381,42 @@ export function PlayerWalletBar({ phoneMode = false }: { phoneMode?: boolean }) 
 
   return (
     <>
-      <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-900/90 to-black/80 p-2.5 shadow-lg sm:p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400 sm:h-10 sm:w-10">
-              <Wallet className="h-5 w-5" />
+      <div
+        className={cn(
+          "rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-900/90 to-black/80 shadow-lg",
+          sideColumn ? "p-2.5" : "p-2.5 sm:p-4",
+        )}
+      >
+        <div
+          className={cn(
+            sideColumn ? "mb-2 flex flex-col gap-2" : "flex flex-wrap items-center gap-3",
+          )}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <div
+              className={cn(
+                "flex shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400",
+                sideColumn ? "h-9 w-9" : "h-9 w-9 sm:h-10 sm:w-10",
+              )}
+            >
+              <Wallet className={sideColumn ? "h-4 w-4" : "h-5 w-5"} />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Balance</p>
               <p
                 className={cn(
-                  "truncate text-lg font-bold tabular-nums text-emerald-300 sm:text-xl",
+                  "font-bold text-emerald-300",
+                  sideColumn ? "text-lg leading-tight" : "truncate text-lg sm:text-xl",
                   balanceAnimating && "animate-pulse",
                 )}
               >
-                {formatKes(shownBalance)}
+                <AdaptiveKesAmount
+                  amount={shownBalance}
+                  className={cn(
+                    "font-bold text-emerald-300",
+                    sideColumn ? "text-lg" : "text-lg sm:text-xl",
+                  )}
+                />
               </p>
             </div>
           </div>
@@ -375,12 +429,20 @@ export function PlayerWalletBar({ phoneMode = false }: { phoneMode?: boolean }) 
           />
         </div>
 
-        <div className="mt-2.5 grid grid-cols-2 gap-2 sm:gap-3">
+        <div
+          className={cn(
+            "grid gap-2",
+            sideColumn ? "grid-cols-1" : "mt-2.5 grid-cols-2 sm:gap-3",
+            !sideColumn && "mt-2.5",
+          )}
+        >
           <StakeOrFundsSlot onOpenFunds={() => setFundOpen(true)} />
-          <TargetField />
+          <TargetField phoneCompact={sideColumn} />
         </div>
 
-        <p className="mt-1.5 text-[9px] text-zinc-600">{gamesPlayed.toLocaleString()} rounds played</p>
+        <p className={cn("text-[9px] text-zinc-600", sideColumn ? "mt-2" : "mt-1.5")}>
+          {gamesPlayed.toLocaleString()} rounds played
+        </p>
       </div>
 
       <FundRequestDialog open={fundOpen} onOpenChange={setFundOpen} />

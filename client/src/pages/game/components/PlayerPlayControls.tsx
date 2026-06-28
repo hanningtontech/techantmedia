@@ -1,5 +1,6 @@
 import { Banknote, Play, RotateCcw } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
+import { AdaptiveKesAmount } from "@/components/game/AdaptiveKesAmount";
 import { useBlockGamePlayer, useNextMultiplier } from "@/contexts/BlockGamePlayerContext";
 import { usePhoneGameLayout } from "@/hooks/usePhoneGameLayout";
 import { Button } from "@/components/ui/button";
@@ -11,9 +12,11 @@ const sideBtnClass =
 
 const desktopBtnClass = "h-9 text-xs font-medium px-3";
 
-function DesktopButtonRows({ children }: { children: ReactNode[] }) {
+function DesktopButtonRows({ children, alignWithGrid = false }: { children: ReactNode[]; alignWithGrid?: boolean }) {
+  const widthClass = alignWithGrid ? "w-full" : "w-full max-w-md";
+
   if (children.length === 1) {
-    return <div className="w-full max-w-md">{children[0]}</div>;
+    return <div className={widthClass}>{children[0]}</div>;
   }
 
   const rows: ReactNode[][] = [];
@@ -22,7 +25,7 @@ function DesktopButtonRows({ children }: { children: ReactNode[] }) {
   }
 
   return (
-    <div className="flex w-full max-w-md flex-col gap-2">
+    <div className={cn("flex flex-col gap-2", widthClass)}>
       {rows.map((row, rowIdx) =>
         row.length === 2 ? (
           <div key={rowIdx} className="grid grid-cols-2 gap-2">
@@ -43,11 +46,20 @@ export function PlayerPlayControls({
   layout = "stack",
   singleColumn = false,
   phone = false,
+  fixedControlSlot = false,
+  centerDesktop = false,
+  alignWithGrid = false,
 }: {
   pinned?: boolean;
   layout?: "stack" | "side" | "desktop";
   singleColumn?: boolean;
   phone?: boolean;
+  /** Reserve space so grid height stays stable when buttons / status text change. */
+  fixedControlSlot?: boolean;
+  /** Center action buttons under the play board (short-laptop layout). */
+  centerDesktop?: boolean;
+  /** Match parent width (play board tray) — no max-w-md cap. */
+  alignWithGrid?: boolean;
 }) {
   const {
     status,
@@ -79,6 +91,7 @@ export function PlayerPlayControls({
   const actionBarRef = useRef<HTMLDivElement>(null);
   const isSide = layout === "side";
   const isDesktop = layout === "desktop";
+  const gridAligned = alignWithGrid || centerDesktop;
 
   if (isDesktop) {
     const buttons: ReactNode[] = [];
@@ -164,30 +177,60 @@ export function PlayerPlayControls({
       );
     }
 
-    return (
-      <div className="w-full">
-        {playing && currentRound > 0 && (
-          <p className="mb-2 text-center text-[11px] text-zinc-500">
-            Pick{" "}
-            <span className="font-semibold text-emerald-300">{formatKes(roundBalance)}</span> · ×
-            {lastMultiplier.toFixed(2)} · R{currentRound}
-          </p>
-        )}
-        {roundSettled && lastResult && (
-          <p
+    const statusLine =
+      playing && currentRound > 0 ? (
+        <p className="text-center text-[11px] text-zinc-500">
+          Pick{" "}
+          <AdaptiveKesAmount
+            amount={roundBalance}
+            className="inline font-semibold text-emerald-300"
+          />{" "}
+          · ×{lastMultiplier.toFixed(2)} · R{currentRound}
+        </p>
+      ) : roundSettled && lastResult ? (
+        <p
+          className={cn(
+            "text-center text-[11px] font-medium capitalize",
+            lastResult.netProfit >= 0 ? "text-emerald-300" : "text-red-300",
+          )}
+        >
+          {lastResult.outcome.replace("_", " ")} ·{" "}
+          <AdaptiveKesAmount
+            amount={lastResult.netProfit}
+            signed
             className={cn(
-              "mb-2 text-center text-[11px] font-medium capitalize",
+              "inline font-medium",
               lastResult.netProfit >= 0 ? "text-emerald-300" : "text-red-300",
             )}
-          >
-            {lastResult.outcome.replace("_", " ")} · {lastResult.netProfit >= 0 ? "+" : ""}
-            {formatKes(lastResult.netProfit)}
-          </p>
+          />
+        </p>
+      ) : null;
+
+    return (
+      <div
+        className={cn(
+          "flex h-full w-full flex-col",
+          centerDesktop && "items-center",
+          fixedControlSlot &&
+            (centerDesktop ? "justify-start" : "justify-end min-h-[168px]"),
         )}
+      >
+        <div
+          className={cn(
+            statusLine ? "mb-1 min-h-[1.125rem]" : "mb-0 min-h-0",
+            fixedControlSlot && "shrink-0",
+            gridAligned ? "w-full" : undefined,
+            centerDesktop && "max-w-[550px]",
+          )}
+        >
+          {statusLine}
+        </div>
         {buttons.length > 0 ? (
-          <DesktopButtonRows>{buttons}</DesktopButtonRows>
+          <div className={cn(gridAligned && "w-full", centerDesktop && "max-w-[550px]")}>
+            <DesktopButtonRows alignWithGrid={gridAligned}>{buttons}</DesktopButtonRows>
+          </div>
         ) : (
-          <div className="h-9" />
+          <div className={cn("h-9 w-full", centerDesktop && "max-w-[550px]")} />
         )}
       </div>
     );
@@ -202,6 +245,7 @@ export function PlayerPlayControls({
               stake={stake}
               accountBalance={accountBalance}
               setStake={setStake}
+              phoneBar
             />
           ) : (
             <Button
@@ -220,9 +264,10 @@ export function PlayerPlayControls({
           <div className="flex items-stretch gap-2">
             <div className="flex min-h-[3.25rem] min-w-0 flex-1 basis-0 flex-col justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5">
               <p className="text-[9px] uppercase tracking-wide text-emerald-400/80">Current pick</p>
-              <p className="truncate text-base font-bold leading-tight tabular-nums text-emerald-300">
-                {formatKes(roundBalance)}
-              </p>
+              <AdaptiveKesAmount
+                amount={roundBalance}
+                className="text-base font-bold text-emerald-300"
+              />
               <p className="truncate text-[9px] text-zinc-500">
                 ×{lastMultiplier.toFixed(2)} · R{currentRound}
                 {nextMult > 0 && ` · Next ×${nextMult.toFixed(2)}`}
@@ -241,11 +286,11 @@ export function PlayerPlayControls({
         )}
 
         {roundSettled && !playing && (
-          <div className="flex items-stretch gap-2">
+          <div className="flex items-stretch gap-1.5">
             {lastResult && (
               <div
                 className={cn(
-                  "flex min-h-[3.25rem] min-w-0 flex-1 basis-0 flex-col justify-center rounded-xl border px-3 py-1.5",
+                  "flex h-[2.75rem] w-[3.75rem] shrink-0 flex-col justify-center rounded-lg border px-1.5 py-1",
                   lastResult.netProfit >= 0
                     ? "border-emerald-500/30 bg-emerald-500/10"
                     : "border-red-500/30 bg-red-500/10",
@@ -253,36 +298,36 @@ export function PlayerPlayControls({
               >
                 <p
                   className={cn(
-                    "truncate text-[9px] uppercase tracking-wide",
+                    "truncate text-[8px] font-medium uppercase leading-none tracking-wide",
                     lastResult.netProfit >= 0 ? "text-emerald-300/80" : "text-red-300/80",
                   )}
                 >
-                  {lastResult.outcome.replace("_", " ")}
+                  {lastResult.netProfit >= 0 ? "Won" : "Lost"}
                 </p>
-                <p
+                <AdaptiveKesAmount
+                  amount={lastResult.netProfit}
+                  signed
+                  omitCurrency
                   className={cn(
-                    "truncate text-base font-bold leading-tight tabular-nums",
+                    "mt-0.5 text-[11px] font-bold leading-none",
                     lastResult.netProfit >= 0 ? "text-emerald-200" : "text-red-200",
                   )}
-                >
-                  {lastResult.netProfit >= 0 ? "+" : ""}
-                  {formatKes(lastResult.netProfit)}
-                </p>
+                />
               </div>
             )}
             {stakeTooHigh ? (
               <StakeAdjustControl
-                className="min-h-[3.25rem] flex-1 basis-0"
+                className="h-[2.75rem] min-w-0 flex-1"
                 stake={stake}
                 accountBalance={accountBalance}
                 setStake={setStake}
-                compact
+                phoneBar
               />
             ) : (
               <Button
                 type="button"
                 disabled={!canPlayAgain || balanceAnimating}
-                className="h-auto min-h-[3.25rem] flex-1 basis-0 bg-violet-600 px-2 text-sm font-semibold hover:bg-violet-500 disabled:opacity-50"
+                className="h-[2.75rem] min-w-0 flex-1 bg-violet-600 px-2 text-sm font-semibold hover:bg-violet-500 disabled:opacity-50"
                 onClick={() => playAgain()}
               >
                 <Play className="mr-1.5 h-4 w-4 shrink-0" />
@@ -293,12 +338,12 @@ export function PlayerPlayControls({
               type="button"
               disabled={balanceAnimating || !canResetAfterRound}
               variant="outline"
-              className="h-auto min-h-[3.25rem] w-11 shrink-0 border-white/15 bg-zinc-900 px-0 hover:bg-zinc-800"
+              className="h-[2.75rem] w-9 shrink-0 border-white/15 bg-zinc-900 px-0 hover:bg-zinc-800"
               onClick={() => resetAfterRound()}
               aria-label="Reset board"
               title="Reset board"
             >
-              <RotateCcw className="h-4 w-4" />
+              <RotateCcw className="h-3.5 w-3.5" />
             </Button>
           </div>
         )}

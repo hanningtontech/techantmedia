@@ -93,6 +93,8 @@ export interface GridAppearancePrefs {
   gridPresetId: PlayerGridPresetId;
   colorId: GridColorThemeId;
   styleId: GridStyleThemeId;
+  /** Shake, explosion overlay, and staggered bomb reveal on loss. */
+  bombAnimationsEnabled?: boolean;
 }
 
 export function loadGridAppearancePrefs(): GridAppearancePrefs {
@@ -111,7 +113,8 @@ export function loadGridAppearancePrefs(): GridAppearancePrefs {
     const styleId = GRID_STYLE_THEMES.some((t) => t.id === parsed.styleId)
       ? (parsed.styleId as GridStyleThemeId)
       : DEFAULT_GRID_STYLE_ID;
-    return { gridPresetId, colorId, styleId };
+    const bombAnimationsEnabled = parsed.bombAnimationsEnabled !== false;
+    return { gridPresetId, colorId, styleId, bombAnimationsEnabled };
   } catch {
     return defaultGridAppearancePrefs();
   }
@@ -130,6 +133,7 @@ export function defaultGridAppearancePrefs(): GridAppearancePrefs {
     gridPresetId: DEFAULT_PLAYER_GRID_ID,
     colorId: DEFAULT_GRID_COLOR_ID,
     styleId: DEFAULT_GRID_STYLE_ID,
+    bombAnimationsEnabled: true,
   };
 }
 
@@ -175,13 +179,50 @@ export function computePlayerGridLayout(
   rows: number,
   containerWidth: number,
   maxBoardHeight?: number,
-  options?: { fillWidth?: boolean },
+  options?: {
+    fillWidth?: boolean;
+    fillRatio?: number;
+    fillBox?: boolean;
+    maxBoxW?: number;
+    maxBoxH?: number;
+  },
 ): PlayerGridLayout {
   const fillWidth = options?.fillWidth === true;
+  const fillBox = options?.fillBox === true;
+  const fillRatioOverride = options?.fillRatio;
   const total = cols * rows;
   const side = Math.max(cols, rows);
   const gap = playerCellGap(total);
   const isMobile = containerWidth < 640;
+
+  /** Maximize square cells inside a measured column (short-laptop split layout). */
+  if (fillBox) {
+    const maxBoxW = options?.maxBoxW ?? Infinity;
+    const maxBoxH = options?.maxBoxH ?? Infinity;
+    const padX = 12;
+    const padY = 10;
+    const usableW = Math.min(Math.max(containerWidth - padX, 80), maxBoxW);
+    const rawH =
+      maxBoardHeight != null && maxBoardHeight > 0
+        ? Math.max(maxBoardHeight - padY, 64)
+        : usableW * (rows / cols);
+    const usableH = Math.min(rawH, maxBoxH);
+    const cellFromW = (usableW - (cols - 1) * gap) / cols;
+    const cellFromH = (usableH - (rows - 1) * gap) / rows;
+    let cellPx = Math.floor(Math.min(cellFromW, cellFromH));
+    cellPx = Math.max(ABS_MIN_CELL_PX, cellPx);
+
+    const boardW = cols * cellPx + (cols - 1) * gap;
+    const boardH = rows * cellPx + (rows - 1) * gap;
+
+    return {
+      cellPx,
+      gap,
+      boardW,
+      boardH,
+      trayW: Math.min(containerWidth, boardW + padX),
+    };
+  }
 
   /**
    * Phone edge-to-edge: always fill the full screen width (square cells = width / cols).
@@ -212,7 +253,7 @@ export function computePlayerGridLayout(
   const maxBoardW = usable;
 
   const targetByGrid = 100 + side * 42;
-  const fillRatio = isMobile
+  const fillRatio = fillRatioOverride ?? (isMobile
     ? 1
     : side <= 4
       ? 0.6
@@ -220,7 +261,7 @@ export function computePlayerGridLayout(
         ? 0.68
         : side <= 8
           ? 0.75
-          : 0.8;
+          : 0.8);
   const targetW = isMobile
     ? maxBoardW
     : Math.min(usable, Math.max(targetByGrid, usable * fillRatio));

@@ -61,7 +61,7 @@ export default function BlockGamePage() {
           path: "/game",
         }}
       />
-      <div className="flex min-h-svh w-full flex-col bg-[#06060a] text-zinc-100">
+      <div className="flex min-h-svh w-full flex-col overflow-hidden bg-[#06060a] text-zinc-100">
         <GameAuthGate>
           <GamePlayRoot />
         </GameAuthGate>

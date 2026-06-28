@@ -55,7 +55,7 @@ import {
   type PlayerSessionRecord,
 } from "@/lib/game/playerSessionHistory";
 import { recordPlayerRound } from "@/lib/game/playerRevenueFirestore";
-import { bombFullGridRevealDelayMs } from "@/lib/game/bombRevealTiming";
+import { bombHitEffectsDelayMs, bombStaggerIntervalMs, bombsPerStaggerStep } from "@/lib/game/bombRevealTiming";
 import {
   loadPlayerWallet,
   savePlayerWallet,
@@ -64,17 +64,25 @@ import {
 import { resolveBombRangeForPreset, type GridBombRanges, defaultBombRanges } from "@/lib/game/bombRangeSettings";
 import {
   onPlayerRoundComplete,
-  playerCalculateMultiplier,
-  playerCashOutPayout,
   preparePenaltyForNewGame,
 } from "@/lib/game/earlyCashOutPenalty";
-import { randomBombCountForGrid } from "@/lib/game/randomBombs";
+import {
+  adaptivePlayerPayout,
+  calculateAdaptivePlayerMultiplier,
+  createAdaptiveBombIndices,
+  loadPlayerAdaptiveState,
+  onAdaptiveRoundComplete,
+  planAdaptiveBoard,
+  prepareAdaptiveGame,
+  recordAdaptivePick,
+  savePlayerAdaptiveState,
+  type PlayerAdaptiveState,
+} from "@/lib/game/playerAdaptiveEngine";
 import {
   applyManualPick,
-  createBombIndices,
   finalizeManualGameEconomics,
 } from "@/lib/simulation/engine";
-import { isBombSoundMuted, playBombExplosionSound, playSafeRevealSound, preloadBombSound, setBombSoundMuted, unlockGameAudio } from "@/lib/simulation/bombEffects";
+import { isBombSoundMuted, playBombExplosionSound, playBombRevealTickSound, playSafeRevealSound, preloadBombSound, setBombSoundMuted, stopBombRevealTickSound, unlockGameAudio } from "@/lib/simulation/bombEffects";
 import { totalCells } from "@/lib/simulation/math";
 import type {
   CellState,
@@ -122,6 +130,9 @@ interface BlockGamePlayerState {
   chartPanelMode: ChartPanelMode;
   liveMetrics: { games: number; userProfit: number; adminRevenue: number };
   explosionCell: number | null;
+  bombPopCell: number | null;
+  bombAnimationsEnabled: boolean;
+  bombCascadeActive: boolean;
   boardEpoch: number;
   canCashOut: boolean;
   canStartGame: boolean;
@@ -136,12 +147,14 @@ interface BlockGamePlayerState {
   setGridStyleTheme: (id: GridStyleThemeId) => void;
   setStake: (amount: number) => void;
   toggleSoundMuted: () => void;
+  setBombAnimationsEnabled: (enabled: boolean) => void;
   startNewGame: () => boolean;
   resetAfterRound: () => void;
   setPlayerTarget: (targetBalance: number) => boolean;
   clearPlayerTarget: () => void;
   cashOut: () => void;
   penaltyKeepFraction: number | null;
+  roundMultiplierCap: number | null;
   clickCell: (index: number) => void;
   requestFund: (amount: number) => FundRequestRecord;
   dismissTargetCelebration: () => void;
@@ -161,12 +174,24 @@ interface ActiveRoundState {
   gameStake: number;
   currentRound: number;
   penaltyKeepFraction: number | null;
+  baseHouseEdge: number;
+  multiplierCap: number | null;
 }
 
 interface BoardSnapshot {
   bombs: number;
   bombIndices: Set<number>;
   config: GameConfig;
+  multiplierCap: number | null;
+  baseHouseEdge: number;
+}
+
+function roundMultOptions(active: ActiveRoundState) {
+  return {
+    baseHouseEdge: active.baseHouseEdge,
+    penaltyKeepFraction: active.penaltyKeepFraction,
+    multiplierCap: active.multiplierCap,
+  };
 }
 
 function emptyCells(total: number): CellState[] {
@@ -193,6 +218,9 @@ export function BlockGamePlayerProvider({
   const [gridPresetId, setGridPresetId] = useState<PlayerGridPresetId>(initialPresetId);
   const [gridColorId, setGridColorId] = useState<GridColorThemeId>(initialPrefs.colorId);
   const [gridStyleId, setGridStyleId] = useState<GridStyleThemeId>(initialPrefs.styleId);
+  const [bombAnimationsEnabled, setBombAnimationsEnabledState] = useState(
+    initialPrefs.bombAnimationsEnabled !== false,
+  );
   const [stake, setStakeState] = useState(10);
   const [accountBalance, setAccountBalance] = useState(() => loadPlayerWallet().balance);
   const [displayBalance, setDisplayBalance] = useState(() => loadPlayerWallet().balance);
@@ -214,6 +242,8 @@ export function BlockGamePlayerProvider({
   const [roundSettled, setRoundSettled] = useState(false);
   const [lastResult, setLastResult] = useState<ManualSessionResult | null>(null);
   const [explosionCell, setExplosionCell] = useState<number | null>(null);
+  const [bombPopCell, setBombPopCell] = useState<number | null>(null);
+  const [bombCascadeActive, setBombCascadeActive] = useState(false);
   const [boardEpoch, setBoardEpoch] = useState(0);
   const [chartHistory, setChartHistory] = useState<SimChartTick[]>([]);
   const [chartTimeframeId, setChartTimeframeId] = useState("1s");
@@ -237,6 +267,7 @@ export function BlockGamePlayerProvider({
     targetBalance: number;
   } | null>(null);
   const [penaltyKeepFraction, setPenaltyKeepFraction] = useState<number | null>(null);
+  const [roundMultiplierCap, setRoundMultiplierCap] = useState<number | null>(null);
 
   const chartHistoryRef = useRef<SimChartTick[]>([]);
   const accountBeforeGameRef = useRef(0);
@@ -246,8 +277,34 @@ export function BlockGamePlayerProvider({
   const revealedRef = useRef<Set<number>>(new Set());
   const activeRoundRef = useRef<ActiveRoundState | null>(null);
   const hadPenaltyThisGameRef = useRef(false);
+  const hadQuickWithdrawPenaltyRef = useRef(false);
+  const adaptiveStateRef = useRef<PlayerAdaptiveState>(loadPlayerAdaptiveState(uid));
+  const sessionHistoryRef = useRef(sessionHistory);
+  const sessionTargetRef = useRef(sessionTarget);
+  const accountBalanceRef = useRef(accountBalance);
   const bombRevealPendingRef = useRef(false);
   const bombRevealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bombCascadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bombPopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bombRevealSoundTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const bombCascadeGenRef = useRef(0);
+  const bombAnimationsRef = useRef(bombAnimationsEnabled);
+
+  const clearBombRevealSoundTimers = useCallback(() => {
+    for (const t of bombRevealSoundTimersRef.current) {
+      window.clearTimeout(t);
+    }
+    bombRevealSoundTimersRef.current = [];
+    stopBombRevealTickSound();
+  }, []);
+
+  const clearBombCascadeTimers = useCallback(() => {
+    if (bombCascadeTimerRef.current != null) {
+      window.clearTimeout(bombCascadeTimerRef.current);
+      bombCascadeTimerRef.current = null;
+    }
+    clearBombRevealSoundTimers();
+  }, [clearBombRevealSoundTimers]);
 
   const gridPreset = PLAYER_GRID_PRESETS.find((p) => p.id === gridPresetId) ?? preset;
   const effectiveGrid = useMemo(
@@ -260,22 +317,68 @@ export function BlockGamePlayerProvider({
     [currentBombs, effectiveGrid.cols, effectiveGrid.rows, houseEdge, stake],
   );
 
+  useEffect(() => {
+    sessionHistoryRef.current = sessionHistory;
+  }, [sessionHistory]);
+
+  useEffect(() => {
+    sessionTargetRef.current = sessionTarget;
+  }, [sessionTarget]);
+
+  useEffect(() => {
+    accountBalanceRef.current = accountBalance;
+  }, [accountBalance]);
+
+  useEffect(() => {
+    adaptiveStateRef.current = loadPlayerAdaptiveState(uid);
+  }, [uid]);
+
   const reshuffleBoard = useCallback(
     (rows: number, cols: number, presetId: PlayerGridPresetId, stakeForConfig = stake): BoardSnapshot => {
       const range = resolveBombRangeForPreset(presetId, bombRanges);
-      const bombs = randomBombCountForGrid(rows, cols, range.pctMin, range.pctMax);
-      const total = rows * cols;
-      const bombIndices = createBombIndices(total, bombs);
-      const gameConfig = basePlayerGameConfig(rows, cols, bombs, stakeForConfig, houseEdge);
+      let adaptive = prepareAdaptiveGame(adaptiveStateRef.current);
+      const sessionNetProfit = sessionHistoryRef.current.reduce((sum, r) => sum + r.netProfit, 0);
+      const plan = planAdaptiveBoard({
+        rows,
+        cols,
+        pctMin: range.pctMin,
+        pctMax: range.pctMax,
+        sessionTarget: sessionTargetRef.current,
+        accountBalance: accountBalanceRef.current,
+        stake: stakeForConfig,
+        sessionNetProfit,
+        adaptive,
+      });
+      adaptive = { ...adaptive, quickWithdrawMultiplierCap: plan.multiplierCap };
+      adaptiveStateRef.current = adaptive;
+      savePlayerAdaptiveState(uid, adaptive);
 
-      setCurrentBombs(bombs);
+      const bombIndices = createAdaptiveBombIndices(
+        rows,
+        cols,
+        plan.bombCount,
+        plan.placementMode,
+        plan.hotZone,
+      );
+      const gameConfig = basePlayerGameConfig(rows, cols, plan.bombCount, stakeForConfig, houseEdge);
+      const total = rows * cols;
+
+      setCurrentBombs(plan.bombCount);
       setBoardEpoch((n) => n + 1);
       setExplosionCell(null);
+      setBombPopCell(null);
+      stopBombRevealTickSound();
+      clearBombCascadeTimers();
       if (bombRevealTimerRef.current != null) {
         window.clearTimeout(bombRevealTimerRef.current);
         bombRevealTimerRef.current = null;
       }
+      if (bombPopTimerRef.current != null) {
+        window.clearTimeout(bombPopTimerRef.current);
+        bombPopTimerRef.current = null;
+      }
       bombRevealPendingRef.current = false;
+      setBombCascadeActive(false);
       setCells(emptyCells(total));
       setBombIndices(bombIndices);
       setRevealed(new Set());
@@ -286,14 +389,34 @@ export function BlockGamePlayerProvider({
       setLastMultiplier(0);
       activeRoundRef.current = null;
 
-      return { bombs, bombIndices, config: gameConfig };
+      return {
+        bombs: plan.bombCount,
+        bombIndices,
+        config: gameConfig,
+        multiplierCap: plan.multiplierCap,
+        baseHouseEdge: houseEdge,
+      };
     },
-    [bombRanges, houseEdge, stake],
+    [bombRanges, clearBombCascadeTimers, houseEdge, stake, uid],
   );
 
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
+
+  useEffect(() => {
+    bombAnimationsRef.current = bombAnimationsEnabled;
+  }, [bombAnimationsEnabled]);
+
+  /** Safety net: after a loss, every cell must be bomb or safe — never left hidden. */
+  useEffect(() => {
+    if (status !== "lost") return;
+    const total = totalCells(config.rows, config.cols);
+    if (cells.length !== total) return;
+    if (!cells.some((c) => c === "hidden")) return;
+    setCells(Array.from({ length: total }, (_, i) => (bombIndices.has(i) ? "bomb" : "safe")));
+    setRevealed(new Set(Array.from({ length: total }, (_, i) => i)));
+  }, [status, cells, bombIndices, config.rows, config.cols]);
 
   useEffect(
     () => () => {
@@ -301,9 +424,19 @@ export function BlockGamePlayerProvider({
         window.clearTimeout(bombRevealTimerRef.current);
         bombRevealTimerRef.current = null;
       }
+      if (bombCascadeTimerRef.current != null) {
+        window.clearTimeout(bombCascadeTimerRef.current);
+        bombCascadeTimerRef.current = null;
+      }
+      if (bombPopTimerRef.current != null) {
+        window.clearTimeout(bombPopTimerRef.current);
+        bombPopTimerRef.current = null;
+      }
+      stopBombRevealTickSound();
+      clearBombCascadeTimers();
       bombRevealPendingRef.current = false;
     },
-    [],
+    [clearBombCascadeTimers],
   );
 
   useEffect(() => {
@@ -454,8 +587,17 @@ export function BlockGamePlayerProvider({
       };
       setSessionHistory((prev) => appendPlayerSessionRecord(uid, sessionRecord, prev));
       onPlayerRoundComplete(uid, result.outcome, result.round, hadPenaltyThisGameRef.current);
+      adaptiveStateRef.current = onAdaptiveRoundComplete(
+        uid,
+        result.outcome,
+        result.round,
+        adaptiveStateRef.current,
+        hadQuickWithdrawPenaltyRef.current,
+      );
       hadPenaltyThisGameRef.current = false;
+      hadQuickWithdrawPenaltyRef.current = false;
       setPenaltyKeepFraction(null);
+      setRoundMultiplierCap(null);
       persistWallet(result.endingAccountBalance, nextGames, economics.userStake, economics.userPayout);
       setLastResult(result);
       setRoundSettled(true);
@@ -509,6 +651,102 @@ export function BlockGamePlayerProvider({
     setCells(Array.from({ length: total }, (_, i) => (bombs.has(i) ? "bomb" : "safe")));
     setRevealed(new Set(Array.from({ length: total }, (_, i) => i)));
   }, []);
+
+  const flashBombPop = useCallback((index: number) => {
+    setBombPopCell(index);
+    if (bombPopTimerRef.current != null) window.clearTimeout(bombPopTimerRef.current);
+    bombPopTimerRef.current = window.setTimeout(() => {
+      bombPopTimerRef.current = null;
+      setBombPopCell((cur) => (cur === index ? null : cur));
+    }, 130);
+  }, []);
+
+  const revealRemainingAfterBombHit = useCallback(
+    (
+      hitIndex: number,
+      bombs: Set<number>,
+      total: number,
+      animated: boolean,
+      cascadeGen: number,
+      onComplete: () => void,
+    ) => {
+      const otherBombs = Array.from(bombs).filter((i) => i !== hitIndex);
+      const isStale = () => bombCascadeGenRef.current !== cascadeGen;
+      let finalized = false;
+
+      const finalizeBoard = () => {
+        if (finalized || isStale()) return;
+        finalized = true;
+        if (bombCascadeTimerRef.current != null) {
+          window.clearTimeout(bombCascadeTimerRef.current);
+          bombCascadeTimerRef.current = null;
+        }
+        clearBombRevealSoundTimers();
+        revealAllCells(bombs, total);
+        setExplosionCell(null);
+        setBombPopCell(null);
+        stopBombRevealTickSound();
+        onComplete();
+      };
+
+      if (!animated) {
+        finalizeBoard();
+        return;
+      }
+
+      if (otherBombs.length === 0) {
+        finalizeBoard();
+        return;
+      }
+
+      const interval = bombStaggerIntervalMs(otherBombs.length, total);
+      const batchSize = bombsPerStaggerStep(otherBombs.length, total);
+      let step = 0;
+
+      const revealNextBomb = () => {
+        if (finalized || isStale()) return;
+        if (step >= otherBombs.length) {
+          finalizeBoard();
+          return;
+        }
+        const end = Math.min(step + batchSize, otherBombs.length);
+        for (let s = step; s < end; s++) {
+          revealedRef.current.add(otherBombs[s]!);
+        }
+        setCells((prev) => {
+          const next = [...prev];
+          for (let s = step; s < end; s++) {
+            next[otherBombs[s]!] = "bomb";
+          }
+          return next;
+        });
+        setRevealed((prev) => {
+          const next = new Set(prev);
+          for (let s = step; s < end; s++) next.add(otherBombs[s]!);
+          return next;
+        });
+        for (let s = step; s < end; s++) {
+          const idx = otherBombs[s]!;
+          const soundDelay = (s - step) * Math.max(8, Math.floor(interval * 0.45));
+          const timer = window.setTimeout(() => {
+            if (finalized || isStale()) return;
+            flashBombPop(idx);
+            playBombRevealTickSound(interval);
+          }, soundDelay);
+          bombRevealSoundTimersRef.current.push(timer);
+        }
+        step = end;
+        bombCascadeTimerRef.current = window.setTimeout(revealNextBomb, interval);
+      };
+
+      revealNextBomb();
+
+      const safetyMs = Math.min(1200, 280 + otherBombs.length * 45);
+      const safetyTimer = window.setTimeout(() => finalizeBoard(), safetyMs);
+      bombRevealSoundTimersRef.current.push(safetyTimer);
+    },
+    [flashBombPop, revealAllCells, clearBombRevealSoundTimers],
+  );
 
   const revealCell = useCallback((index: number, isBomb: boolean) => {
     revealedRef.current.add(index);
@@ -570,13 +808,18 @@ export function BlockGamePlayerProvider({
       const board = reshuffleBoard(effectiveGrid.rows, effectiveGrid.cols, gridPresetId, s);
       const { keepFraction } = preparePenaltyForNewGame(uid);
       hadPenaltyThisGameRef.current = keepFraction != null;
+      hadQuickWithdrawPenaltyRef.current =
+        adaptiveStateRef.current.quickWithdrawPenaltyGamesLeft > 0;
       setPenaltyKeepFraction(keepFraction);
+      setRoundMultiplierCap(board.multiplierCap);
       activeRoundRef.current = {
         config: board.config,
         bombIndices: board.bombIndices,
         gameStake: s,
         currentRound: 0,
         penaltyKeepFraction: keepFraction,
+        baseHouseEdge: board.baseHouseEdge,
+        multiplierCap: board.multiplierCap,
       };
       setStatus("playing");
       return true;
@@ -650,14 +893,18 @@ export function BlockGamePlayerProvider({
       const active = activeRoundRef.current;
       const potential = active
         ? accountBalance +
-          playerCashOutPayout(
+          adaptivePlayerPayout(
             active.config,
             active.currentRound,
             active.gameStake,
-            active.penaltyKeepFraction,
+            roundMultOptions(active),
           )
         : accountBalance +
-          playerCashOutPayout(config, currentRound, gameStake, penaltyKeepFraction);
+          adaptivePlayerPayout(config, currentRound, gameStake, {
+            baseHouseEdge: houseEdge,
+            penaltyKeepFraction,
+            multiplierCap: roundMultiplierCap,
+          });
       if (potential < sessionTarget) return;
     } else if (displayBalance < sessionTarget) {
       return;
@@ -666,11 +913,11 @@ export function BlockGamePlayerProvider({
     const bal =
       status === "playing" && active
         ? accountBalance +
-          playerCashOutPayout(
+          adaptivePlayerPayout(
             active.config,
             active.currentRound,
             active.gameStake,
-            active.penaltyKeepFraction,
+            roundMultOptions(active),
           )
         : displayBalance;
     triggerTargetCelebration(bal);
@@ -684,6 +931,7 @@ export function BlockGamePlayerProvider({
     sessionTarget,
     status,
     penaltyKeepFraction,
+    roundMultiplierCap,
     triggerTargetCelebration,
   ]);
 
@@ -692,11 +940,11 @@ export function BlockGamePlayerProvider({
     if (!active || status !== "playing" || active.currentRound <= 0) return;
     const total = totalCells(active.config.rows, active.config.cols);
     revealAllCells(active.bombIndices, total);
-    const payout = playerCashOutPayout(
+    const payout = adaptivePlayerPayout(
       active.config,
       active.currentRound,
       active.gameStake,
-      active.penaltyKeepFraction,
+      roundMultOptions(active),
     );
     const mult = active.gameStake > 0 ? payout / active.gameStake : 0;
     settleRound("cashed_out", payout, active.currentRound, mult, "cashed_out");
@@ -710,6 +958,9 @@ export function BlockGamePlayerProvider({
 
       unlockGameAudio();
 
+      adaptiveStateRef.current = recordAdaptivePick(adaptiveStateRef.current, index);
+      savePlayerAdaptiveState(uid, adaptiveStateRef.current);
+
       const outcome = applyManualPick(
         active.config,
         active.bombIndices,
@@ -720,11 +971,11 @@ export function BlockGamePlayerProvider({
 
       let multiplier = outcome.multiplier;
       let balanceAfter = outcome.balanceAfter;
-      if (!outcome.isBomb && active.penaltyKeepFraction != null) {
-        multiplier = playerCalculateMultiplier(
+      if (!outcome.isBomb) {
+        multiplier = calculateAdaptivePlayerMultiplier(
           active.config,
           outcome.round,
-          active.penaltyKeepFraction,
+          roundMultOptions(active),
         );
         balanceAfter = active.gameStake * multiplier;
       }
@@ -734,20 +985,27 @@ export function BlockGamePlayerProvider({
         const bombs = active.bombIndices;
         const stakeForRound = active.gameStake;
         const economics = outcome.economics;
+        const animated = bombAnimationsRef.current;
 
         bombRevealPendingRef.current = true;
+        setBombCascadeActive(true);
+        bombCascadeGenRef.current += 1;
+        const cascadeGen = bombCascadeGenRef.current;
+        clearBombCascadeTimers();
         revealCell(index, true);
         playBombExplosionSound();
-        setExplosionCell(index);
+        if (animated) {
+          flashBombPop(index);
+          setExplosionCell(index);
+        }
         setRoundBalance(0);
         setLastMultiplier(0);
 
         const finishBombRound = () => {
-          bombRevealTimerRef.current = null;
-          revealAllCells(bombs, total);
+          bombRevealPendingRef.current = false;
+          setBombCascadeActive(false);
           setStatus("lost");
           activeRoundRef.current = null;
-          bombRevealPendingRef.current = false;
           const result: ManualSessionResult = {
             outcome: "lost",
             startingAccountBalance: accountBeforeGameRef.current,
@@ -761,10 +1019,19 @@ export function BlockGamePlayerProvider({
           recordCompletedGame(economics, result);
         };
 
-        const delay = bombFullGridRevealDelayMs();
-        requestAnimationFrame(() => {
-          bombRevealTimerRef.current = window.setTimeout(finishBombRound, delay);
-        });
+        const runReveal = () => {
+          revealRemainingAfterBombHit(index, bombs, total, animated, cascadeGen, finishBombRound);
+        };
+
+        const delay = bombHitEffectsDelayMs(animated, total);
+        if (delay <= 0) {
+          runReveal();
+        } else {
+          bombRevealTimerRef.current = window.setTimeout(() => {
+            bombRevealTimerRef.current = null;
+            runReveal();
+          }, delay);
+        }
         return;
       }
 
@@ -781,7 +1048,7 @@ export function BlockGamePlayerProvider({
         settleRound("won", balanceAfter, outcome.round, multiplier, "won");
       }
     },
-    [accountBalance, recordCompletedGame, revealAllCells, revealCell, settleRound],
+    [accountBalance, recordCompletedGame, revealCell, revealRemainingAfterBombHit, flashBombPop, settleRound, uid],
   );
 
   const setGridPreset = useCallback(
@@ -820,8 +1087,13 @@ export function BlockGamePlayerProvider({
   }, [gridPresetId, isPhone, reshuffleBoard, status]);
 
   useEffect(() => {
-    saveGridAppearancePrefs({ gridPresetId, colorId: gridColorId, styleId: gridStyleId });
-  }, [gridColorId, gridPresetId, gridStyleId]);
+    saveGridAppearancePrefs({
+      gridPresetId,
+      colorId: gridColorId,
+      styleId: gridStyleId,
+      bombAnimationsEnabled,
+    });
+  }, [gridColorId, gridPresetId, gridStyleId, bombAnimationsEnabled]);
 
   useEffect(() => {
     saveChartPanelMode(chartPanelMode);
@@ -839,6 +1111,11 @@ export function BlockGamePlayerProvider({
     },
     [status],
   );
+
+  const setBombAnimationsEnabled = useCallback((enabled: boolean) => {
+    setBombAnimationsEnabledState(enabled);
+    bombAnimationsRef.current = enabled;
+  }, []);
 
   const toggleSoundMuted = useCallback(() => {
     setSoundMuted((m) => {
@@ -929,6 +1206,9 @@ export function BlockGamePlayerProvider({
     chartPanelMode,
     liveMetrics,
     explosionCell,
+    bombPopCell,
+    bombAnimationsEnabled,
+    bombCascadeActive,
     boardEpoch,
     canCashOut,
     canStartGame,
@@ -937,12 +1217,14 @@ export function BlockGamePlayerProvider({
     sessionTarget,
     targetCelebration,
     penaltyKeepFraction,
+    roundMultiplierCap,
     formatKes,
     setGridPreset,
     setGridColorTheme,
     setGridStyleTheme,
     setStake,
     toggleSoundMuted,
+    setBombAnimationsEnabled,
     startNewGame,
     resetAfterRound,
     playAgain,
@@ -969,9 +1251,13 @@ export function useBlockGamePlayer() {
   return ctx;
 }
 
-/** Current multiplier if player cashed out now (for UI). Applies live early-cash-out penalty when active. */
+/** Current multiplier if player cashed out now (for UI). Applies adaptive house edge + penalties. */
 export function useNextMultiplier(config: GameConfig, round: number): number {
   const ctx = useBlockGamePlayer();
   if (round <= 0) return 0;
-  return playerCalculateMultiplier(config, round, ctx?.penaltyKeepFraction ?? null);
+  return calculateAdaptivePlayerMultiplier(config, round, {
+    baseHouseEdge: config.houseEdge,
+    penaltyKeepFraction: ctx?.penaltyKeepFraction ?? null,
+    multiplierCap: ctx?.roundMultiplierCap ?? null,
+  });
 }

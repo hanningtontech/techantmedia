@@ -5,7 +5,10 @@ import {
   EyeOff,
   PanelRightClose,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { useBlockGamePlayer } from "@/contexts/BlockGamePlayerContext";
+import { useShortLaptopGameLayout } from "@/hooks/useShortLaptopGameLayout";
+import { SIM_CHART_PAGE_PATH } from "@/lib/simulation/chartSessionSync";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PlayerInlineChart } from "./PlayerInlineChart";
@@ -96,6 +99,30 @@ export function PlayerChartPanel({ className }: { className?: string }) {
 
 export function ChartPanelToggleButton({ className }: { className?: string }) {
   const { chartPanelMode, expandChartPanel, minimizeChartPanel } = useBlockGamePlayer();
+  const isShortLaptop = useShortLaptopGameLayout();
+  const [, setLocation] = useLocation();
+
+  const openChartPage = () => setLocation(SIM_CHART_PAGE_PATH);
+
+  if (isShortLaptop) {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className={cn(
+          "h-9 border-[#2962ff]/40 text-xs text-zinc-200",
+          className,
+        )}
+        onClick={openChartPage}
+        aria-label="Open live chart page"
+        title="Open live chart"
+      >
+        <BarChart3 className="mr-1 h-3.5 w-3.5" />
+        Chart
+      </Button>
+    );
+  }
 
   if (chartPanelMode !== "open") {
     return (

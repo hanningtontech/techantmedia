@@ -1,5 +1,6 @@
 import { useBlockGamePlayer } from "@/contexts/BlockGamePlayerContext";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   GRID_COLOR_THEMES,
   GRID_STYLE_THEMES,
@@ -25,11 +26,27 @@ export function GridSettingsContent({
   onOpenPhoneSession?: () => void;
 }) {
   const { summary } = useGridAppearanceSummary();
+  const { bombAnimationsEnabled, setBombAnimationsEnabled } = useBlockGamePlayer();
 
   return (
     <div className="space-y-4">
       <p className="text-sm leading-snug text-zinc-500">Current: {summary}</p>
       <GridAppearanceSelector embedded />
+      <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+        <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-zinc-500">Gameplay</p>
+        <label className="flex cursor-pointer items-center justify-between gap-3">
+          <span className="text-sm text-zinc-200">Bomb hit effects</span>
+          <Switch
+            checked={bombAnimationsEnabled}
+            onCheckedChange={setBombAnimationsEnabled}
+            aria-label="Bomb hit effects"
+          />
+        </label>
+        <p className="mt-2 text-xs leading-snug text-zinc-500">
+          On: quick shake, flash, then bombs reveal in a fast cascade. Off: sound only with an instant
+          board reveal.
+        </p>
+      </div>
       <TargetSettingsSection />
       <SessionHistorySettingsSection onOpenPhoneSession={onOpenPhoneSession} />
       <div className="border-t border-white/10 pt-4">

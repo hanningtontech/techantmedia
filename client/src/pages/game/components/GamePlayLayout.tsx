@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBlockGamePlayer } from "@/contexts/BlockGamePlayerContext";
-import { usePhoneGameLayout } from "@/hooks/usePhoneGameLayout";
+import { useGameViewportLayout } from "@/hooks/useGameViewportLayout";
+import {
+  GAME_GRID_SIDEBAR_GAP,
+  resolveDesktopGridColumnPx,
+} from "@/lib/game/gameLayoutConstants";
 import { cn } from "@/lib/utils";
 import { PlayerWalletBar } from "./PlayerWalletBar";
 import { GameSalutation } from "./GameSalutation";
@@ -9,39 +13,27 @@ import { PlayerPlayControls } from "./PlayerPlayControls";
 import { PlayerSessionTable } from "./PlayerSessionTable";
 import { PlayerChartPanel } from "./PlayerChartPanel";
 
-const LG_BREAKPOINT = 1024;
 const ROW_GAP_PX = 12;
-/** Keeps desktop grid cell size unchanged after moving controls below the board. */
-const DESKTOP_GRID_RESERVE_PX = 220;
 /** Fixed inline chart height on phone — fits x-axis inside viewport without scrolling. */
 const PHONE_INLINE_CHART_PX = 228;
-
-function useStackedLayout() {
-  const [stacked, setStacked] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < LG_BREAKPOINT,
-  );
-
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${LG_BREAKPOINT - 1}px)`);
-    const update = () => setStacked(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-
-  return stacked;
-}
 
 /**
  * Phone: wallet (collapsible) + grid fits middle + pinned action bar.
  * Grid height is computed from measured top/bottom chrome so no cells are clipped.
  */
 function PhoneGamePlayLayout() {
-  const { chartPanelMode } = useBlockGamePlayer();
+  const { chartPanelMode, status } = useBlockGamePlayer();
   const chartOpen = chartPanelMode === "open";
   const topRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
   const [boardMax, setBoardMax] = useState(0);
+  const [walletExpanded, setWalletExpanded] = useState(false);
+
+  const collapseWalletOnGridTap = useCallback(() => {
+    if (status === "playing" && walletExpanded) {
+      setWalletExpanded(false);
+    }
+  }, [status, walletExpanded]);
 
   const measureBoard = useCallback(() => {
     const topH = topRef.current?.getBoundingClientRect().height ?? 0;
@@ -66,18 +58,27 @@ function PhoneGamePlayLayout() {
       roCtrl.disconnect();
       window.removeEventListener("resize", measureBoard);
     };
-  }, [chartOpen, measureBoard]);
+  }, [chartOpen, measureBoard, walletExpanded]);
 
   return (
     <div className="flex h-svh max-h-svh w-full flex-col overflow-hidden">
       <div ref={topRef} className="shrink-0 space-y-1 px-2 pt-2">
         <GameSalutation className="px-0.5" />
-        <PlayerWalletBar phoneMode />
+        <PlayerWalletBar
+          phoneMode
+          phoneWalletExpanded={walletExpanded}
+          onPhoneWalletExpandedChange={setWalletExpanded}
+        />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-0 py-1">
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
-          <PlayerGameGrid maxBoardHeight={boardMax} edgeToEdge hideHint />
+          <PlayerGameGrid
+            maxBoardHeight={boardMax}
+            edgeToEdge
+            hideHint
+            onCellClick={collapseWalletOnGridTap}
+          />
         </div>
 
         {chartOpen && (
@@ -102,41 +103,27 @@ function PhoneGamePlayLayout() {
 }
 
 /**
- * Desktop: grid left, controls right (always visible).
- * Phone: dedicated compact single-screen layout (see PhoneGamePlayLayout).
+ * Desktop: grid left, wallet + session table right (width > 700px).
+ * Phone: dedicated stacked layout (width ≤ 700px).
  */
 export function GamePlayLayout() {
   const { chartPanelMode } = useBlockGamePlayer();
   const chartOpen = chartPanelMode === "open";
-  const isStacked = useStackedLayout();
-  const isPhone = usePhoneGameLayout();
+  const { isPhone, isDesktopWithSession } = useGameViewportLayout();
   const pageRef = useRef<HTMLDivElement>(null);
   const playSectionRef = useRef<HTMLElement>(null);
-  const controlsRef = useRef<HTMLDivElement>(null);
   const desktopControlsRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const gridMeasureRef = useRef<HTMLDivElement>(null);
   const gridColRef = useRef<HTMLDivElement>(null);
-  const [controlsBlockSize, setControlsBlockSize] = useState(isStacked ? 120 : 200);
   const [desktopControlsHeight, setDesktopControlsHeight] = useState(100);
   const [maxBoardHeight, setMaxBoardHeight] = useState(0);
-  const [gridColHeight, setGridColHeight] = useState(320);
-  const isDesktopWide = !isPhone && !isStacked;
+  const [playColHeight, setPlayColHeight] = useState(0);
+  const [boardTrayWidth, setBoardTrayWidth] = useState(0);
+  const [gridColumnWidth, setGridColumnWidth] = useState(0);
 
   useEffect(() => {
-    const el = controlsRef.current;
-    if (!el) return;
-
-    const measure = () => {
-      setControlsBlockSize(isStacked ? el.offsetHeight : el.offsetWidth);
-    };
-
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [isStacked]);
-
-  useEffect(() => {
-    if (!isDesktopWide) return;
+    if (!isDesktopWithSession) return;
     const el = desktopControlsRef.current;
     if (!el) return;
 
@@ -145,7 +132,7 @@ export function GamePlayLayout() {
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [isDesktopWide, chartOpen, maxBoardHeight]);
+  }, [isDesktopWithSession, chartOpen, maxBoardHeight]);
 
   const measurePlayArea = useCallback(() => {
     const section = playSectionRef.current;
@@ -156,15 +143,9 @@ export function GamePlayLayout() {
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue("env(safe-area-inset-bottom)")) || 0;
     const bottomPad = 12 + safeBottom;
 
-    let avail = window.innerHeight - top - bottomPad;
-    if (isStacked) {
-      avail -= controlsBlockSize + ROW_GAP_PX;
-    } else if (isDesktopWide) {
-      avail -= desktopControlsHeight + ROW_GAP_PX;
-    }
-
+    const avail = window.innerHeight - top - bottomPad - desktopControlsHeight - ROW_GAP_PX;
     setMaxBoardHeight(Math.max(120, avail));
-  }, [controlsBlockSize, desktopControlsHeight, isDesktopWide, isStacked]);
+  }, [desktopControlsHeight]);
 
   useEffect(() => {
     const onResize = () => measurePlayArea();
@@ -179,20 +160,36 @@ export function GamePlayLayout() {
     if (pageRef.current) ro.observe(pageRef.current);
     if (playSectionRef.current) ro.observe(playSectionRef.current);
     return () => ro.disconnect();
-  }, [measurePlayArea, chartOpen, isStacked]);
+  }, [measurePlayArea, chartOpen]);
 
   useEffect(() => {
-    if (!isDesktopWide) return;
+    if (!isDesktopWithSession) return;
     const el = gridColRef.current;
     if (!el) return;
-    const measure = () => setGridColHeight(Math.max(200, el.offsetHeight));
+    const measure = () => setPlayColHeight(Math.max(0, el.offsetHeight));
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [isDesktopWide, chartOpen, maxBoardHeight]);
+  }, [isDesktopWithSession, chartOpen, maxBoardHeight]);
 
-  const controlsReserve = isStacked ? 0 : isDesktopWide ? DESKTOP_GRID_RESERVE_PX : controlsBlockSize + ROW_GAP_PX;
+  const measureDesktopRow = useCallback(() => {
+    if (!isDesktopWithSession) return;
+    const shell = pageRef.current?.clientWidth ?? 0;
+    setGridColumnWidth(resolveDesktopGridColumnPx(shell));
+  }, [isDesktopWithSession]);
+
+  useEffect(() => {
+    if (!isDesktopWithSession) return;
+    measureDesktopRow();
+    const ro = new ResizeObserver(measureDesktopRow);
+    if (pageRef.current) ro.observe(pageRef.current);
+    window.addEventListener("resize", measureDesktopRow);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measureDesktopRow);
+    };
+  }, [isDesktopWithSession, measureDesktopRow]);
 
   if (isPhone) {
     return <PhoneGamePlayLayout />;
@@ -202,92 +199,74 @@ export function GamePlayLayout() {
     <div
       ref={pageRef}
       className={cn(
-        "mx-auto flex w-full flex-col py-2 sm:py-3 lg:py-4",
-        isDesktopWide ? "w-[80vw] max-w-[80vw] px-0" : "max-w-6xl px-3 sm:px-4 lg:gap-1",
-        isPhone ? "gap-2 px-0 py-2" : "gap-0",
-        cn("min-h-svh overflow-x-hidden overflow-y-auto"),
+        "mx-auto flex w-[80vw] max-w-[80vw] flex-col px-3 py-2 sm:px-4 sm:py-3 lg:py-4",
+        "min-h-svh overflow-x-hidden overflow-y-auto",
       )}
     >
-      <header className="mb-1 shrink-0 px-3 text-center sm:mb-1.5 sm:px-4 sm:text-left">
-        <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl lg:mb-0">Block Game</h1>
-        <GameSalutation className="mt-0.5" />
-        <p className="mt-0.5 hidden text-xs text-zinc-500 sm:block sm:text-sm lg:mt-1">
-          Real play · KES wallet · Same fair multiplier as our simulation engine
-        </p>
-      </header>
+      <div className="flex w-full flex-col gap-3">
+        <header className="shrink-0 text-center sm:text-left">
+          <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl lg:mb-0">Block Game</h1>
+          <GameSalutation className="mt-0.5" />
+          <p className="mt-0.5 hidden text-xs text-zinc-500 sm:block sm:text-sm lg:mt-1">
+            Real play · KES wallet · Same fair multiplier as our simulation engine
+          </p>
+        </header>
 
-      <div className="shrink-0 px-3 sm:px-4">
-        <PlayerWalletBar />
-      </div>
-
-      <section
-        ref={playSectionRef}
-        className={cn(
-          "flex min-h-0 w-full min-w-0",
-          chartOpen ? "flex-1" : "shrink-0",
-          isStacked
-            ? "flex-col items-stretch justify-start gap-2 overflow-x-hidden px-3"
-            : isDesktopWide
-              ? "flex-1 items-start justify-center overflow-visible"
-              : "flex-1 items-start justify-start overflow-hidden",
-        )}
-        aria-label="Game board"
-      >
-        {isDesktopWide ? (
-          <div className="flex w-full items-start gap-4 lg:gap-5">
-            <div ref={gridColRef} className="flex shrink-0 flex-col items-start gap-2">
+        <div className="flex w-full items-start justify-start" style={{ gap: GAME_GRID_SIDEBAR_GAP }}>
+          <section
+            ref={playSectionRef}
+            className="relative min-w-0 shrink-0 overflow-hidden"
+            style={{
+              width:
+                boardTrayWidth > 0
+                  ? boardTrayWidth
+                  : gridColumnWidth > 0
+                    ? gridColumnWidth
+                    : undefined,
+            }}
+            aria-label="Game board"
+          >
+            <div
+              ref={gridMeasureRef}
+              className="pointer-events-none absolute h-0 overflow-hidden opacity-0"
+              style={gridColumnWidth > 0 ? { width: gridColumnWidth } : undefined}
+              aria-hidden
+            />
+            <div ref={gridColRef} className="flex w-full flex-col items-stretch gap-2">
               <PlayerGameGrid
-                layoutMeasureRef={pageRef}
-                controlsReservePx={DESKTOP_GRID_RESERVE_PX}
+                layoutMeasureRef={gridMeasureRef}
+                controlsReservePx={0}
                 maxBoardHeight={maxBoardHeight}
                 alignStart
                 widthInsetPx={0}
                 edgeToEdge={false}
+                layoutFillRatio={1}
+                className="w-full max-w-full"
+                onTraySize={({ width }) => setBoardTrayWidth(width)}
               />
-              <div ref={desktopControlsRef} className="w-full">
-                <PlayerPlayControls layout="desktop" />
-              </div>
-            </div>
-            <div className="min-w-[min(100%,18rem)] flex-1 self-stretch">
-              <PlayerSessionTable targetHeight={gridColHeight} />
-            </div>
-          </div>
-        ) : (
-          <div
-            className={cn(
-              "flex max-w-full",
-              isStacked ? "w-full flex-col gap-2" : "items-center gap-3 md:gap-4 lg:gap-5",
-            )}
-          >
-            <PlayerGameGrid
-              layoutMeasureRef={isStacked ? playSectionRef : pageRef}
-              controlsReservePx={controlsReserve}
-              maxBoardHeight={maxBoardHeight}
-              alignStart={!isStacked}
-              widthInsetPx={0}
-              edgeToEdge={isPhone}
-            />
-
-            {!isStacked && (
               <div
-                ref={controlsRef}
-                className="shrink-0 w-44 sm:w-48 md:w-52 lg:w-56"
+                ref={desktopControlsRef}
+                className="shrink-0 self-start"
+                style={boardTrayWidth > 0 ? { width: boardTrayWidth } : undefined}
               >
-                <PlayerPlayControls layout="side" singleColumn={false} pinned />
+                <PlayerPlayControls layout="desktop" alignWithGrid />
               </div>
-            )}
+            </div>
+          </section>
 
-            {isStacked && (
-              <div ref={controlsRef} className="w-full shrink-0">
-                <PlayerPlayControls layout="stack" singleColumn pinned />
-              </div>
-            )}
-          </div>
-        )}
-      </section>
+          <aside
+            ref={sidebarRef}
+            className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden"
+            style={playColHeight > 0 ? { height: playColHeight } : undefined}
+          >
+            <PlayerWalletBar />
+            <PlayerSessionTable fillParent className="min-h-0 w-full flex-1" />
+          </aside>
+        </div>
+      </div>
 
       {chartOpen && (
-        <section className="shrink-0 px-3 pb-8 sm:px-4" aria-label="Session chart">
+        <section className="mt-2 shrink-0 pb-8" aria-label="Session chart">
           <PlayerChartPanel className="h-[min(48vh,380px)] lg:h-[440px]" />
         </section>
       )}

@@ -1,8 +1,16 @@
 const BOMB_SOUND_URL = "/sounds/bomb-explosion.mpeg";
+const BOMB_REVEAL_SOUND_URL = "/sounds/bomb-reveal.mp3";
 const MUTE_KEY = "block-game-sound-muted";
 
-let audioPool: HTMLAudioElement | null = null;
+/** Stable, moderate level for per-cell reveal ticks (not the hit explosion). */
+const BOMB_REVEAL_VOLUME = 0.26;
+const REVEAL_AUDIO_POOL_SIZE = 6;
+
+let explosionAudio: HTMLAudioElement | null = null;
+let revealAudioSlots: HTMLAudioElement[] = [];
+let revealSlotCursor = 0;
 let audioCtx: AudioContext | null = null;
+let audioUnlocked = false;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -20,19 +28,82 @@ export function unlockGameAudio(): void {
   if (ctx?.state === "suspended") {
     void ctx.resume().catch(() => {});
   }
+  if (audioUnlocked) return;
+  audioUnlocked = true;
   try {
     getBombAudio().load();
+    ensureRevealAudioPool().forEach((a) => a.load());
   } catch {
     /* ignore */
   }
 }
 
+/** Original bomb-hit explosion — unchanged from before. */
 function getBombAudio(): HTMLAudioElement {
-  if (!audioPool) {
-    audioPool = new Audio(BOMB_SOUND_URL);
-    audioPool.preload = "auto";
+  if (!explosionAudio) {
+    explosionAudio = new Audio(BOMB_SOUND_URL);
+    explosionAudio.preload = "auto";
+    explosionAudio.volume = 0.85;
   }
-  return audioPool;
+  return explosionAudio;
+}
+
+function ensureRevealAudioPool(): HTMLAudioElement[] {
+  if (revealAudioSlots.length === 0) {
+    revealAudioSlots = Array.from({ length: REVEAL_AUDIO_POOL_SIZE }, () => {
+      const audio = new Audio(BOMB_REVEAL_SOUND_URL);
+      audio.preload = "auto";
+      audio.volume = BOMB_REVEAL_VOLUME;
+      return audio;
+    });
+  }
+  return revealAudioSlots;
+}
+
+function takeRevealAudioSlot(): HTMLAudioElement {
+  const pool = ensureRevealAudioPool();
+  const audio = pool[revealSlotCursor % pool.length]!;
+  revealSlotCursor += 1;
+  return audio;
+}
+
+/**
+ * Card-flip tick for one bomb cell during the reveal cascade only.
+ * Short clip; does not cut off the original explosion sound.
+ */
+export function playBombRevealTickSound(paceMs = 28): void {
+  if (isBombSoundMuted()) return;
+  const ctx = getAudioContext();
+  if (ctx?.state === "suspended") {
+    void ctx.resume().catch(() => {});
+  }
+  const clipMs = Math.max(48, Math.min(100, Math.round(paceMs * 2.2)));
+  try {
+    const audio = takeRevealAudioSlot();
+    audio.volume = BOMB_REVEAL_VOLUME;
+    audio.pause();
+    audio.currentTime = 0;
+    const playPromise = audio.play();
+    if (playPromise) void playPromise.catch(() => {});
+    window.setTimeout(() => {
+      if (!audio.paused && audio.currentTime > 0) {
+        audio.pause();
+      }
+    }, clipMs);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function stopBombRevealTickSound(): void {
+  try {
+    for (const audio of revealAudioSlots) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export function isBombSoundMuted(): boolean {
@@ -114,7 +185,7 @@ export function playSafeRevealSound(): void {
   osc.stop(now + 0.12);
 }
 
-/** Play the bomb explosion sound unless muted. Falls back to Web Audio if the file is missing. */
+/** Original bomb-hit explosion on the cell you tapped — not the cascade reveal. */
 export function playBombExplosionSound(): void {
   if (isBombSoundMuted()) return;
   unlockGameAudio();
@@ -143,6 +214,10 @@ export function preloadBombSound(): void {
       },
       { once: true },
     );
+    ensureRevealAudioPool().forEach((reveal) => {
+      reveal.preload = "auto";
+      reveal.load();
+    });
   } catch {
     /* ignore */
   }

@@ -15,6 +15,9 @@ export function usePlayerGridLayout(
   maxBoardHeight = 0,
   widthInsetPx = 0,
   edgeToEdge = false,
+  layoutFillRatio?: number,
+  fillBox = false,
+  maxBox?: { w?: number; h?: number },
 ) {
   const internalRef = useRef<HTMLDivElement>(null);
   const [pageWidth, setPageWidth] = useState(0);
@@ -50,9 +53,9 @@ export function usePlayerGridLayout(
         rows,
         boardWidth,
         maxBoardHeight > 0 ? maxBoardHeight : undefined,
-        { fillWidth: edgeToEdge },
+        { fillWidth: edgeToEdge, fillRatio: layoutFillRatio, fillBox, maxBoxW: maxBox?.w, maxBoxH: maxBox?.h },
       ),
-    [cols, rows, boardWidth, maxBoardHeight, edgeToEdge],
+    [cols, rows, boardWidth, maxBoardHeight, edgeToEdge, layoutFillRatio, fillBox, maxBox?.w, maxBox?.h],
   );
 
   return { internalRef, ...layout };

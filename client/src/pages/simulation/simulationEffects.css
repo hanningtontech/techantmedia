@@ -193,3 +193,69 @@
   background: #fbbf24;
   animation: sim-explosion-particle 0.5s ease-out forwards;
 }
+
+/* Player game — lightweight hit feedback */
+.sim-grid-shake--player {
+  animation: sim-bomb-shake-player 0.22s ease-out;
+}
+
+@keyframes sim-bomb-shake-player {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(-2px, 1px, 0);
+  }
+  50% {
+    transform: translate3d(2px, -1px, 0);
+  }
+  75% {
+    transform: translate3d(-1px, -1px, 0);
+  }
+}
+
+.sim-bomb-cell--player {
+  position: relative;
+  overflow: visible !important;
+  z-index: 2;
+  animation: sim-bomb-cell-pop-player 0.2s ease-out;
+}
+
+@keyframes sim-bomb-cell-pop-player {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.sim-explosion-ultra__flash {
+  pointer-events: none;
+  position: absolute;
+  inset: -12%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 140, 60, 0.75) 0%,
+    rgba(255, 60, 30, 0.35) 42%,
+    transparent 68%
+  );
+  animation: sim-explosion-ultra-flash 0.22s ease-out forwards;
+  will-change: opacity;
+}
+
+@keyframes sim-explosion-ultra-flash {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.85);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+}

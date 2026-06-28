@@ -13,6 +13,8 @@ type Props = {
   setStake: (amount: number) => void;
   className?: string;
   compact?: boolean;
+  /** Phone bottom bar — wider stake field for 4-digit amounts. */
+  phoneBar?: boolean;
 };
 
 export function StakeAdjustControl({
@@ -21,6 +23,7 @@ export function StakeAdjustControl({
   setStake,
   className,
   compact = false,
+  phoneBar = false,
 }: Props) {
   const maxAffordable = Math.min(MAX_STAKE_KES, Math.max(0, Math.floor(accountBalance)));
   const minAllowed = Math.min(MIN_STAKE_KES, maxAffordable);
@@ -49,11 +52,12 @@ export function StakeAdjustControl({
     setStake(next);
   };
 
-  const btnH = compact ? "h-9" : "h-10 sm:h-12";
-  const iconBtn = compact ? "h-9 w-8" : "h-10 w-9 sm:h-12 sm:w-10";
+  const btnH = phoneBar ? "h-8" : compact ? "h-9" : "h-10 sm:h-12";
+  const iconBtn = phoneBar ? "h-8 w-7" : compact ? "h-9 w-8" : "h-10 w-9 sm:h-12 sm:w-10";
+  const checkBtn = phoneBar ? "h-8 w-8" : iconBtn;
 
   return (
-    <div className={cn("flex w-full items-center gap-1.5", className)}>
+    <div className={cn("flex w-full min-w-0 items-center", phoneBar ? "gap-1" : "gap-1.5", className)}>
       <button
         type="button"
         className={cn(
@@ -63,7 +67,7 @@ export function StakeAdjustControl({
         disabled={current <= minAllowed}
         onClick={() => bump(-STEP)}
       >
-        <Minus className="h-4 w-4" />
+        <Minus className={phoneBar ? "h-3.5 w-3.5" : "h-4 w-4"} />
       </button>
       <input
         type="number"
@@ -82,9 +86,10 @@ export function StakeAdjustControl({
         }}
         onFocus={(e) => scrollInputIntoView(e.currentTarget)}
         className={cn(
-          "min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 px-2 text-center text-sm font-semibold tabular-nums text-violet-200 outline-none focus:border-violet-500/60",
+          "min-w-0 flex-1 rounded-lg border border-white/10 bg-black/40 text-center font-semibold tabular-nums text-violet-200 outline-none focus:border-violet-500/60",
+          phoneBar ? "min-w-[4.25rem] px-1 text-sm tracking-tight" : "px-2 text-center text-sm",
           btnH,
-          compact ? "text-sm" : "text-base",
+          !phoneBar && (compact ? "text-sm" : "text-base"),
         )}
       />
       <button
@@ -96,14 +101,14 @@ export function StakeAdjustControl({
         disabled={current >= maxAffordable}
         onClick={() => bump(STEP)}
       >
-        <Plus className="h-4 w-4" />
+        <Plus className={phoneBar ? "h-3.5 w-3.5" : "h-4 w-4"} />
       </button>
       <Button
         type="button"
-        className={cn("shrink-0 bg-violet-600 p-0 hover:bg-violet-500", iconBtn)}
+        className={cn("shrink-0 bg-violet-600 p-0 hover:bg-violet-500", checkBtn)}
         onClick={commit}
       >
-        <Check className="h-4 w-4" />
+        <Check className={phoneBar ? "h-3.5 w-3.5" : "h-4 w-4"} />
       </Button>
     </div>
   );

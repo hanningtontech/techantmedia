@@ -127,7 +127,7 @@ export function GridAppearanceSettingsButton() {
         </PhoneGameBottomSheet>
       ) : (
         <Dialog open={open} onOpenChange={handleOpenChange}>
-          <DialogContent className="max-h-[min(90dvh,640px)] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-md">
+          <DialogContent className="max-h-[min(90dvh,720px)] w-[min(96vw,42rem)] max-w-[42rem] overflow-y-auto border-zinc-800 bg-zinc-950 text-zinc-100 sm:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Settings</DialogTitle>
               <DialogDescription className="text-zinc-500">Grid, target, wallet, and session</DialogDescription>

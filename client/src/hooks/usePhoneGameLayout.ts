@@ -1,20 +1,8 @@
-import { useEffect, useState } from "react";
+import { useGameViewportLayout } from "./useGameViewportLayout";
 
-const PHONE_MAX_WIDTH = 639;
-
-/** True below `sm` — phone-sized viewport for game layout and grid presets. */
+/** Phone / narrow-short viewport — full-screen stacked game UI, session in settings. */
 export function usePhoneGameLayout() {
-  const [isPhone, setIsPhone] = useState(
-    () => typeof window !== "undefined" && window.innerWidth <= PHONE_MAX_WIDTH,
-  );
-
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${PHONE_MAX_WIDTH}px)`);
-    const update = () => setIsPhone(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-
-  return isPhone;
+  return useGameViewportLayout().isPhone;
 }
+
+export { PHONE_MAX_WIDTH } from "./useGameViewportLayout";

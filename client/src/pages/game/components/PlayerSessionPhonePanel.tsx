@@ -1,3 +1,4 @@
+import { AdaptiveKesAmount } from "@/components/game/AdaptiveKesAmount";
 import { useBlockGamePlayer } from "@/contexts/BlockGamePlayerContext";
 import {
   outcomeLabel,
@@ -9,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function SessionHistorySummary({ className }: { className?: string }) {
-  const { sessionHistory, formatKes, gamesPlayed } = useBlockGamePlayer();
+  const { sessionHistory, gamesPlayed } = useBlockGamePlayer();
   const sessionNet = sessionHistory.reduce((s, r) => s + r.netProfit, 0);
 
   return (
@@ -24,8 +25,12 @@ export function SessionHistorySummary({ className }: { className?: string }) {
             sessionNet >= 0 ? "text-emerald-400" : "text-red-400",
           )}
         >
-          Net {sessionNet >= 0 ? "+" : ""}
-          {formatKes(sessionNet)}
+          Net{" "}
+          <AdaptiveKesAmount
+            amount={sessionNet}
+            signed
+            className={cn("font-semibold", sessionNet >= 0 ? "text-emerald-400" : "text-red-400")}
+          />
         </p>
       </div>
     </div>
@@ -46,13 +51,7 @@ function formatPhoneTime(iso: string) {
   }
 }
 
-function SessionRoundCard({
-  record,
-  formatKes,
-}: {
-  record: PlayerSessionRecord;
-  formatKes: (n: number, opts?: { compact?: boolean }) => string;
-}) {
+function SessionRoundCard({ record }: { record: PlayerSessionRecord }) {
   const positive = record.netProfit >= 0;
 
   return (
@@ -78,33 +77,39 @@ function SessionRoundCard({
       </p>
 
       <div className="grid grid-cols-3 gap-2 rounded-lg border border-white/5 bg-black/25 p-2">
-        <div>
+        <div className="min-w-0">
           <p className="text-[9px] uppercase tracking-wide text-zinc-600">Stake</p>
-          <p className="text-xs font-semibold tabular-nums text-zinc-300">{formatKes(record.stake)}</p>
+          <AdaptiveKesAmount
+            amount={record.stake}
+            className="text-xs font-semibold text-zinc-300"
+          />
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-[9px] uppercase tracking-wide text-zinc-600">Payout</p>
-          <p className="text-xs font-semibold tabular-nums text-zinc-300">{formatKes(record.payout)}</p>
+          <AdaptiveKesAmount
+            amount={record.payout}
+            className="text-xs font-semibold text-zinc-300"
+          />
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-[9px] uppercase tracking-wide text-zinc-600">Net</p>
-          <p
+          <AdaptiveKesAmount
+            amount={record.netProfit}
+            signed
             className={cn(
-              "text-xs font-semibold tabular-nums",
+              "text-xs font-semibold",
               positive ? "text-emerald-300" : "text-red-300",
             )}
-          >
-            {record.netProfit >= 0 ? "+" : ""}
-            {formatKes(record.netProfit)}
-          </p>
+          />
         </div>
       </div>
 
       <p className="mt-2 text-right text-[11px] text-zinc-500">
         Balance after{" "}
-        <span className="font-semibold tabular-nums text-zinc-300">
-          {formatKes(record.endingBalance)}
-        </span>
+        <AdaptiveKesAmount
+          amount={record.endingBalance}
+          className="font-semibold text-zinc-300"
+        />
       </p>
     </article>
   );
@@ -112,7 +117,7 @@ function SessionRoundCard({
 
 /** Phone-optimized session history — stacked cards, full scroll. */
 export function PlayerSessionPhonePanel() {
-  const { sessionHistory, formatKes } = useBlockGamePlayer();
+  const { sessionHistory } = useBlockGamePlayer();
   const [, setLocation] = useLocation();
   const rows = [...sessionHistory].reverse();
 
@@ -140,7 +145,7 @@ export function PlayerSessionPhonePanel() {
       </Button>
       <div className="space-y-2.5">
         {rows.map((record) => (
-          <SessionRoundCard key={record.id} record={record} formatKes={formatKes} />
+          <SessionRoundCard key={record.id} record={record} />
         ))}
       </div>
     </div>
